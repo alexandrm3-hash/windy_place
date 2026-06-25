@@ -75,9 +75,18 @@ const WIND_STATES = [
   { tgt: -0.90, label:'STORM',           lvl:4, dMin: 55, dMax: 95 },  // [4]
   { tgt:  0.28, label:'TAILWIND',        lvl:1, dMin:100, dMax:180 },  // [5]
   { tgt: -1.40, label:'TORNADO',         lvl:5, dMin: 70, dMax:110 },  // [6]
+  { tgt: -2.20, label:'SUPERCELL',       lvl:6, dMin: 50, dMax:  80 }, // [7]
 ];
 
-function getWindTier() { return Math.min(5, Math.floor(maxReach / (12 * 200))); }
+const TIER_THRESHOLDS = [0, 200, 400, 600, 800, 1000, 1200];
+function getWindTier() {
+  const score = Math.floor(maxReach / 12);
+  let tier = 0;
+  for (let i = 1; i < TIER_THRESHOLDS.length; i++) {
+    if (score >= TIER_THRESHOLDS[i]) tier = i;
+  }
+  return tier;
+}
 
 function pickWindState() {
   const tier = getWindTier(), r = Math.random();
@@ -104,16 +113,23 @@ function pickWindState() {
     if (r < 0.10) return WIND_STATES[3]; if (r < 0.78) return WIND_STATES[4];
     if (r < 0.91) return WIND_STATES[5]; return WIND_STATES[6]; // 9% tornado
   }
-  // tier 5+
-  if (r < 0.05) return WIND_STATES[3];
-  if (r < 0.60) return WIND_STATES[4];
-  if (r < 0.78) return WIND_STATES[5];
-  return WIND_STATES[6]; // 22% tornado
+  if (tier === 5) {
+    if (r < 0.05) return WIND_STATES[3];
+    if (r < 0.60) return WIND_STATES[4];
+    if (r < 0.78) return WIND_STATES[5];
+    return WIND_STATES[6]; // 22% tornado
+  }
+  // tier 6 — SUPERCELL dominates
+  if (r < 0.04) return WIND_STATES[4];
+  if (r < 0.18) return WIND_STATES[5];
+  if (r < 0.45) return WIND_STATES[6]; // regular tornado 27%
+  return WIND_STATES[7];               // supercell 55%
 }
 
 function windInfo() {
   const f = wind.force;
   if (Math.abs(f) < 0.04) return WIND_STATES[0];
+  if (f < -1.60)           return WIND_STATES[7]; // SUPERCELL
   if (f < -1.00)           return WIND_STATES[6]; // TORNADO
   if (f < -0.72)           return WIND_STATES[4]; // STORM
   if (f < -0.48)           return WIND_STATES[3]; // GALE
@@ -170,10 +186,11 @@ function extendMap() {
       const hx    = chunkX + 18 + Math.random() * Math.max(0, chunkW - 120);
       const delay = 40 + Math.floor(Math.random() * 160);
       const isMetal = Math.random() < 0.10;
+      const slopeAngle = Math.atan2(baseGroundY(hx) - baseGroundY(hx + 20), 20);
       houses.push({ x:hx, y:groundY-120, w:110,
                     type: isMetal ? 'metal' : 'normal',
                     flying:false, flyTimer:delay, flyDelay:delay,
-                    vy:0, vx:0, angle:0, alpha:1 });
+                    vy:0, vx:0, angle:slopeAngle, baseAngle:slopeAngle, alpha:1 });
     }
 
     genFrontier = chunkX + chunkW;
@@ -353,7 +370,10 @@ function updateHouses() {
       h.y  += h.vy;
       h.angle += h.vx * 0.015;
       if (h.y - cam.y < -80) h.alpha -= 0.025;
-    } else if (isStorm && h.type !== 'metal') { // metal bunkers never fly
+    } else {
+      h.angle = h.baseAngle; // keep grounded house aligned to terrain slope
+    }
+    if (!h.flying && isStorm && h.type !== 'metal') { // metal bunkers never fly
       h.flyTimer--;
       if (h.flyTimer <= 0) {
         h.flying = true;
@@ -368,36 +388,45 @@ function updateHouses() {
 // ── Tornado update ────────────────────────────────────────
 function updateTornado() {
   const isTornado = wind.force < -1.00;
+  const isSupercell = wind.force < -1.60;
+
+  // Scale factor: supercell is 2.2x bigger/faster
+  const scale = isSupercell ? 2.2 : 1.0;
 
   if (isTornado && !tornado) {
     const spawnX = player.x + 900;
     const spawnY = baseGroundY(spawnX);
     const colors = ['#6a7a5a','#8a9a6a','#5a6a4a','#7a8070','#aaa090','#554433'];
     const debris = [];
-    for (let i = 0; i < 18; i++) {
+    const debrisCount = isSupercell ? 36 : 18;
+    for (let i = 0; i < debrisCount; i++) {
       debris.push({
         angle:    Math.random() * Math.PI * 2,
         radius:   35 + Math.random() * 75,
         fracH:    0.15 + Math.random() * 0.70,
-        speed:    0.035 + Math.random() * 0.055,
+        speed:    (0.035 + Math.random() * 0.055) * scale,
         rotSpeed: 1 + Math.random() * 2,
         color:    colors[Math.floor(Math.random() * colors.length)],
-        w: 3 + Math.random() * 9, h: 2 + Math.random() * 5,
+        w: (3 + Math.random() * 9) * scale, h: (2 + Math.random() * 5) * scale,
         x: spawnX, y: spawnY,
       });
     }
-    tornado = { x: spawnX, y: spawnY, angle: 0, alpha: 0, debris };
+    tornado = { x: spawnX, y: spawnY, angle: 0, alpha: 0, debris, scale };
   }
 
   if (!tornado) return;
 
-  tornado.angle += 0.07;
+  // Supercell spins much faster
+  tornado.angle += isSupercell ? 0.18 : 0.07;
+  tornado.scale = scale;
 
   if (isTornado) {
-    tornado.alpha = Math.min(1, tornado.alpha + 0.016);
-    // Chase player — always ~280 world units ahead (to the right)
-    const targetX = player.x + 280;
-    tornado.x += (targetX - tornado.x) * 0.014;
+    tornado.alpha = Math.min(1, tornado.alpha + (isSupercell ? 0.032 : 0.016));
+    // Supercell chases faster and closer
+    const leadDist = isSupercell ? 180 : 280;
+    const chaseRate = isSupercell ? 0.030 : 0.014;
+    const targetX = player.x + leadDist;
+    tornado.x += (targetX - tornado.x) * chaseRate;
     tornado.y  = baseGroundY(tornado.x);
   } else {
     tornado.alpha = Math.max(0, tornado.alpha - 0.013);
@@ -405,23 +434,40 @@ function updateTornado() {
     tornado.y  = baseGroundY(tornado.x);
   }
 
-  // Update orbiting debris
+  const TW = 100 * tornado.scale, BW = 10 * tornado.scale;
   for (const d of tornado.debris) {
     d.angle += d.speed;
-    const TW = 100, BW = 10;
     const bandW = TW * (1 - d.fracH) + BW * d.fracH;
     d.x = tornado.x + Math.cos(d.angle) * bandW;
-    d.y = tornado.y - 185 * d.fracH + Math.sin(d.angle * 1.4) * 14;
+    d.y = tornado.y - 185 * tornado.scale * d.fracH + Math.sin(d.angle * 1.4) * 14 * tornado.scale;
   }
 
-  // Proximity kill — being overtaken by the tornado is lethal (metal house protects)
-  if (tornado.alpha > 0.75 && !player.inHouse) {
-    const dist = Math.abs((player.x + player.w / 2) - tornado.x);
-    if (dist < 58) {
-      const s = Math.floor(maxReach / 12);
-      if (s > bestScore) bestScore = s;
-      deathReason = 'tornado';
-      gState = 'dead';
+  // Supercell can rip bunkers off the ground (5% per frame when close)
+  if (isSupercell && tornado.alpha > 0.75) {
+    for (const h of houses) {
+      if (!h.flying && h.type === 'metal') {
+        const dist = Math.abs((h.x + h.w / 2) - tornado.x);
+        if (dist < 160 && Math.random() < 0.05) {
+          h.flying = true;
+          if (player.inHouse === h) player.inHouse = null;
+        }
+      }
+    }
+  }
+
+  // Proximity kill — supercell has larger kill radius; metal house only safe from normal tornado
+  if (tornado.alpha > 0.75) {
+    const killRadius = isSupercell ? 130 : 58;
+    const metalProtects = !isSupercell;
+    const sheltered = player.inHouse && (metalProtects || player.inHouse.type !== 'metal');
+    if (!sheltered) {
+      const dist = Math.abs((player.x + player.w / 2) - tornado.x);
+      if (dist < killRadius) {
+        const s = Math.floor(maxReach / 12);
+        if (s > bestScore) bestScore = s;
+        deathReason = 'tornado';
+        gState = 'dead';
+      }
     }
   }
 
@@ -1330,32 +1376,38 @@ function drawTornado() {
   const sy = tornado.y - cam.y;
   if (sx < -280 || sx > W + 280) return;
 
-  const TH = 185, TW = 100, BW = 10;
+  const sc = tornado.scale || 1.0;
+  const TH = 185 * sc, TW = 100 * sc, BW = 10 * sc;
 
   ctx.save();
   ctx.globalAlpha = tornado.alpha;
 
-  // Cloud base (dark swirling mass at top)
+  // Cloud base (dark swirling mass at top) — supercell gets an extra sickly green tinge
+  const cloudR = sc > 1.5 ? 40 : 55, cloudG = sc > 1.5 ? 60 : 65, cloudB = sc > 1.5 ? 55 : 80;
   const cloudGrd = ctx.createRadialGradient(sx, sy - TH, 0, sx, sy - TH, TW * 1.6);
-  cloudGrd.addColorStop(0,   'rgba(55,65,80,0.92)');
-  cloudGrd.addColorStop(0.5, 'rgba(45,55,70,0.65)');
-  cloudGrd.addColorStop(1,   'rgba(30,40,55,0)');
+  cloudGrd.addColorStop(0,   `rgba(${cloudR},${cloudG},${cloudB},0.96)`);
+  cloudGrd.addColorStop(0.5, `rgba(${cloudR-10},${cloudG-10},${cloudB-10},0.70)`);
+  cloudGrd.addColorStop(1,   `rgba(${cloudR-25},${cloudG-25},${cloudB-25},0)`);
   ctx.fillStyle = cloudGrd;
   ctx.beginPath();
-  ctx.ellipse(sx, sy - TH, TW * 1.55, 38, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx, sy - TH, TW * 1.55, 38 * sc, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Funnel bands — rotating ellipses at each height slice
-  for (let band = 0; band < 14; band++) {
-    const t      = band / 13;
+  const bandCount = sc > 1.5 ? 22 : 14;
+  for (let band = 0; band < bandCount; band++) {
+    const t      = band / (bandCount - 1);
     const bandY  = sy - TH + t * TH;
     const bandW  = TW * (1 - t) + BW * t;
     const twist  = tornado.angle * 1.8 + t * Math.PI * 5;
     const swayX  = Math.sin(twist) * bandW * 0.28;
     const alpha  = 0.18 + (1 - t) * 0.25;
     ctx.globalAlpha = tornado.alpha * alpha;
-    ctx.strokeStyle = `rgba(${90 + (t * 40)|0},${110 + (t * 30)|0},${140 + (t * 20)|0},0.85)`;
-    ctx.lineWidth   = 1.8 + (1 - t) * 3.5;
+    const bandR = sc > 1.5 ? (60 + (t * 30)|0) : (90 + (t * 40)|0);
+    const bandG = sc > 1.5 ? (85 + (t * 25)|0) : (110 + (t * 30)|0);
+    const bandBl = sc > 1.5 ? (90 + (t * 15)|0) : (140 + (t * 20)|0);
+    ctx.strokeStyle = `rgba(${bandR},${bandG},${bandBl},0.85)`;
+    ctx.lineWidth   = (1.8 + (1 - t) * 3.5) * Math.max(1, sc * 0.7);
     ctx.lineCap     = 'round';
     ctx.beginPath();
     ctx.ellipse(sx + swayX, bandY, bandW, bandW * 0.14, 0, 0, Math.PI * 2);
@@ -1364,7 +1416,7 @@ function drawTornado() {
 
   // Central filled cone (gives body to the funnel)
   ctx.globalAlpha = tornado.alpha * 0.32;
-  const ctrl = Math.sin(tornado.angle * 0.9) * 22;
+  const ctrl = Math.sin(tornado.angle * 0.9) * 22 * sc;
   const fGrd = ctx.createLinearGradient(sx - TW, sy - TH, sx, sy);
   fGrd.addColorStop(0,   'rgba(70,90,120,0.8)');
   fGrd.addColorStop(0.6, 'rgba(55,75,105,0.55)');
@@ -1379,13 +1431,13 @@ function drawTornado() {
 
   // Ground swirl at the tip
   ctx.globalAlpha = tornado.alpha * 0.40;
-  const swGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, 65);
+  const swGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, 65 * sc);
   swGrd.addColorStop(0,   'rgba(80,100,130,0.6)');
   swGrd.addColorStop(0.5, 'rgba(60,80,110,0.3)');
   swGrd.addColorStop(1,   'rgba(40,60,90,0)');
   ctx.fillStyle = swGrd;
   ctx.beginPath();
-  ctx.ellipse(sx, sy, 65, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx, sy, 65 * sc, 16 * sc, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Debris
@@ -1420,6 +1472,7 @@ function drawHUD() {
   const fillW = Math.min(barW/2, Math.abs(f)/0.90 * (barW/2));
   if (Math.abs(f) > 0.03) {
     const wCol = f > 0.04 ? '#e8c84a'
+               : wi.lvl>=6 ? '#aa00ff'
                : wi.lvl>=5 ? '#cc44ff'
                : wi.lvl>=3 ? '#e84040'
                : wi.lvl>=2 ? '#e8902a' : '#5dade2';
@@ -1434,7 +1487,7 @@ function drawHUD() {
   ctx.fillStyle = f >  0.04 ? '#e8c84a' : 'rgba(255,255,255,0.2)';
   ctx.textAlign = 'right'; ctx.fillText('►', bx+barW+14, by+7);
 
-  const lblCol = wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
+  const lblCol = wi.lvl>=6?'#aa00ff':wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
   ctx.fillStyle = lblCol; ctx.font = 'bold 11px Courier New';
   ctx.textAlign = 'center'; ctx.fillText(wi.label, mx, 29);
   ctx.restore();
@@ -1442,7 +1495,7 @@ function drawHUD() {
   // Score + tier (top left)
   const score = Math.floor(maxReach / 12);
   const tier  = getWindTier();
-  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020'][tier] || '#cc2020';
+  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#aa00ff'][tier] || '#aa00ff';
 
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.48)'; rrect(14,10,164,40,5); ctx.fill();
@@ -1454,9 +1507,9 @@ function drawHUD() {
 
   ctx.fillStyle = tierC; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'right';
   ctx.fillText('TIER ' + tier, 170, 22);
-  if (tier < 5) {
+  if (tier < 6) {
     ctx.fillStyle = C.dim; ctx.font = '9px Courier New';
-    ctx.fillText((tier+1)*200 + 'm', 170, 40);
+    ctx.fillText(TIER_THRESHOLDS[tier + 1] + 'm', 170, 40);
   } else {
     ctx.fillStyle = tierC; ctx.font = '9px Courier New'; ctx.fillText('MAX', 170, 40);
   }
