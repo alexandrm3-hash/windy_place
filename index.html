@@ -259,7 +259,7 @@ function extendMap() {
     if (chunkW > 120 && Math.random() < 0.50) {
       const hx    = chunkX + 18 + Math.random() * Math.max(0, chunkW - 120);
       const tier  = getWindTier();
-      const bunkerChance = tier >= 6 ? 0.90 : 0.01;
+      const bunkerChance = tier >= 6 ? 0.60 : 0.01;
       const metalChance  = Math.min(1, 0.10 + tier * 0.20);
       const r = Math.random();
       const type = r < bunkerChance ? 'bunker' : r < bunkerChance + metalChance ? 'metal' : 'normal';
