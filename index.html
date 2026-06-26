@@ -181,8 +181,7 @@ function pickWindState() {
   if (tier === 5) {
     if (r < 0.04) return WIND_STATES[3]; if (r < 0.34) return WIND_STATES[4];
     if (r < 0.46) return WIND_STATES[5]; if (r < 0.58) return WIND_STATES[8];
-    if (r < 0.78) return WIND_STATES[6]; if (r < 0.90) return WIND_STATES[9];
-    return WIND_STATES[7]; // 10% hypercane
+    if (r < 0.80) return WIND_STATES[6]; return WIND_STATES[9]; // no hypercane at tier 5
   }
   // tier 6
   if (r < 0.04) return WIND_STATES[4];
@@ -206,15 +205,22 @@ function windInfo() {
 }
 
 // ── Terrain ──────────────────────────────────────────────
-// Mountain slope: ground rises steadily as x increases
+// Mountain slope: ground rises with dramatic hills and steep cliffs
 function baseGroundY(wx) {
-  const rise   = Math.min(360, wx / 22);
-  const ripple = Math.sin(wx * 0.0028) * 14 + Math.sin(wx * 0.007) * 7;
-  return Math.max(60, 420 - rise + ripple);
+  const rise    = Math.min(360, wx / 22);
+  // Large rolling hills
+  const hill1   = Math.sin(wx * 0.0018) * 38;
+  const hill2   = Math.sin(wx * 0.0055 + 1.2) * 22;
+  // Abrupt steep ridges — sharp sine peaks
+  const ridge   = Math.pow(Math.max(0, Math.sin(wx * 0.0009 + 0.7)), 3) * 90;
+  // Fine surface ripple
+  const ripple  = Math.sin(wx * 0.022) * 6;
+  return Math.max(55, 420 - rise + hill1 + hill2 - ridge + ripple);
 }
 
 // ── Global state ─────────────────────────────────────────
 let gState, player, wind, cam, particles, snowflakes, frame;
+let windDebris = [];
 let platforms = [];
 let genFrontier = 0;
 let maxReach    = 0;
@@ -259,14 +265,14 @@ function extendMap() {
     if (chunkW > 120 && Math.random() < 0.50) {
       const hx    = chunkX + 18 + Math.random() * Math.max(0, chunkW - 120);
       const tier  = getWindTier();
-      const bunkerChance = tier >= 6 ? 0.60 : 0.01;
+      const bunkerChance = tier >= 6 ? 0.30 : 0.01;
       const metalChance  = Math.min(1, 0.10 + tier * 0.20);
       const r = Math.random();
       const type = r < bunkerChance ? 'bunker' : r < bunkerChance + metalChance ? 'metal' : 'normal';
       const isBunker = type === 'bunker';
-      const count = isBunker ? 2 + Math.floor(Math.random() * 2) : 1; // 2–3 fortresses in a cluster
+      const count = 1; // fortresses always spawn alone
       for (let ci = 0; ci < count; ci++) {
-        const bx = hx + ci * (180 + 4); // pack them right next to each other
+        const bx = hx + ci * (600 + Math.random() * 400); // wide gap if ever multiple
         const hw2 = isBunker ? 90 : 55;
         const hGroundY = baseGroundY(bx + hw2); // ground exactly under this house
         const hYOffset = isBunker ? 175 : 120;  // body-bottom offset from h.y
@@ -306,6 +312,7 @@ function init() {
   houses           = [];
   particles        = [];
   snowflakes       = [];
+  windDebris       = [];
   tornado          = null;
   challenge        = null;
   stamina          = 1;
@@ -365,7 +372,8 @@ function updatePlayer() {
     }
   }
   // Sprint — Left Shift drains stamina; 2-second cooldown before regen
-  const sprinting = !chalActive && keys['ShiftLeft'] && !staminaDepleted && stamina > 0 && player.onGround;
+  const sprintKey = !chalActive && keys['ShiftLeft'] && !staminaDepleted && stamina > 0;
+  const sprinting = sprintKey && player.onGround;
   player.sprinting = sprinting;
   if (sprinting) {
     stamina = Math.max(0, stamina - 0.0038);          // ~4.4 s to fully drain
@@ -377,7 +385,9 @@ function updatePlayer() {
       stamina = Math.min(1, stamina + 0.0018);         // ~9 s to fully regen
     }
   }
-  const sm = sprinting ? 1.65 : 1;                     // speed multiplier
+  const sm    = sprinting ? 1.65 : 1;                  // acceleration multiplier
+  // Speed cap uses sprintKey so briefly-airborne downhill steps don't clamp momentum
+  const smCap = sprintKey ? 1.65 : 1;
 
   if (!chalActive && goLeft())  { player.vx -= 0.90 * sm; player.facing = -1; }
   if (!chalActive && goRight()) { player.vx += 0.90 * sm; player.facing =  1; }
@@ -386,7 +396,7 @@ function updatePlayer() {
   // Cap wind pull so hypercane doesn't instantly drag the player
   const cappedForce = Math.max(-0.90, Math.min(0.90, wind.force));
   if (!chalActive) player.vx += cappedForce * (player.onGround ? 0.75 : 1.5);
-  player.vx  = Math.max(-5.5 * sm, Math.min(5.5 * sm, player.vx));
+  player.vx  = Math.max(-5.5 * smCap, Math.min(5.5 * smCap, player.vx));
 
   if (!chalActive && doJump() && player.onGround) { player.vy = -12.5; player.onGround = false; }
 
@@ -405,8 +415,10 @@ function updatePlayer() {
   for (const p of platforms) {
     const prevBot = player.y + player.h - player.vy;
     const currBot = player.y + player.h;
+    // Allow a generous snap-down tolerance so downhill steps don't snag the player
+    const snapTol = Math.abs(player.vx) > 1 ? 18 : 5;
     if (player.x + player.w > p.x && player.x < p.x + p.w &&
-        currBot >= p.y && prevBot <= p.y + 5 && player.vy >= 0) {
+        currBot >= p.y && prevBot <= p.y + snapTol && player.vy >= 0) {
       player.y = p.y - player.h;
       player.vy = 0;
       player.onGround = true;
@@ -497,7 +509,7 @@ function updateTornado() {
     const debrisTypes = ['car','car','rock','rock','rock','roof','roof','tree','barrel','plank','plank','rock'];
     if (isHypercane) debrisTypes.push('car','truck','rock','rock','roof','tree','barrel','plank');
     const debris = [];
-    const debrisCount = isHypercane ? 34 : 18;
+    const debrisCount = isHypercane ? 14 : 8;
     for (let i = 0; i < debrisCount; i++) {
       const kind = debrisTypes[i % debrisTypes.length];
       debris.push({
@@ -629,10 +641,51 @@ function updateSnow() {
   });
 }
 
+function updateWindDebris() {
+  const f = wind.force;
+  const str = wind.strength;
+  const active = Math.abs(f) >= 0.44 || f <= -0.48;
+  if (!active) { windDebris = []; return; }
+
+  const KINDS = ['rock','plank','plank','barrel','roof'];
+  const spd = Math.abs(f);
+  if (windDebris.length < 10 && Math.random() < 0.10 * str) {
+    const fromLeft = f > 0;
+    const kind = KINDS[Math.floor(Math.random() * KINDS.length)];
+    const spawnX = fromLeft ? cam.x - 80 : cam.x + W + 80;
+    const gy = baseGroundY(spawnX);
+    // Spawn across a wide vertical range — some near ground, some mid-air, some high
+    const heightFrac = Math.random();
+    const spawnY = gy - 30 - heightFrac * (H * 0.75);
+    // Fast horizontal speed; slight upward kick so they arc, not drop immediately
+    const vx = (fromLeft ? 1 : -1) * (spd * 8 + Math.random() * spd * 6);
+    const vy = -spd * (1.5 + Math.random() * 3); // launched upward
+    windDebris.push({
+      x: spawnX, y: spawnY,
+      vx, vy,
+      rot: Math.random() * Math.PI * 2,
+      rotV: (Math.random() < 0.5 ? 1 : -1) * (0.10 + Math.random() * 0.22),
+      kind,
+      alpha: 0,
+    });
+  }
+
+  windDebris = windDebris.filter(d => {
+    d.vx  += (f * 1.2 - d.vx) * 0.04; // accelerate toward wind speed
+    d.vy  += 0.09;                      // very light gravity — stays airborne
+    d.x   += d.vx;
+    d.y   += d.vy;
+    d.rot += d.rotV;
+    d.alpha = Math.min(1, d.alpha + 0.08);
+    const sx = d.x - cam.x, sy = d.y - cam.y;
+    return sx > -140 && sx < W + 140 && sy < H + 80;
+  });
+}
+
 // ── Main update ───────────────────────────────────────────
 function update() {
   frame++;
-  const _lf = tornado && tornado.alpha > 0.60 && frame % 215 === 0;
+  const _lf = tornado && tornado.alpha > 0.60 && (frame % 38 === 0 || frame % 55 === 0 || frame % 71 === 0);
   WindAudio.update(wind.strength, wind.force, tornado ? tornado.alpha : 0, freezing, _lf);
   if (gState !== 'playing') return;
   updateWind();
@@ -640,6 +693,7 @@ function update() {
   extendMap();
   trimPlatforms();
   updateSnow();
+  updateWindDebris();
   updateHouses();
   updateTornado();
   updateFreezing();
@@ -897,6 +951,59 @@ function drawSnow() {
       ctx.arc(sx, sy, s.size, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+  ctx.restore();
+}
+
+function drawWindDebris() {
+  if (!windDebris.length) return;
+  ctx.save();
+  for (const d of windDebris) {
+    const dx = d.x - cam.x, dy = d.y - cam.y;
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.rotate(d.rot);
+    ctx.globalAlpha = d.alpha * 0.88;
+
+    if (d.kind === 'rock') {
+      ctx.fillStyle = '#7a7060';
+      ctx.beginPath();
+      ctx.moveTo(-7, 4); ctx.lineTo(-5, -8); ctx.lineTo(6, -7);
+      ctx.lineTo(8, 3);  ctx.lineTo(3, 8);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = d.alpha * 0.35;
+      ctx.fillStyle = '#b0a890';
+      ctx.beginPath(); ctx.ellipse(-2, -3, 3, 1.5, -0.4, 0, Math.PI*2); ctx.fill();
+
+    } else if (d.kind === 'plank') {
+      ctx.fillStyle = '#8a6a3a';
+      ctx.fillRect(-20, -3, 40, 6);
+      ctx.strokeStyle = '#5a3a0a'; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(-14,-3); ctx.lineTo(-14,3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo( 14,-3); ctx.lineTo( 14,3); ctx.stroke();
+
+    } else if (d.kind === 'barrel') {
+      ctx.fillStyle = '#6a4a1a';
+      ctx.beginPath(); ctx.ellipse(0,-5,6,2.5,0,0,Math.PI*2); ctx.fill();
+      ctx.fillRect(-6,-5,12,10);
+      ctx.beginPath(); ctx.ellipse(0,5,6,2.5,0,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#3a2a0a'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.ellipse(0,-2,6.5,2,0,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, 2,6.5,2,0,0,Math.PI*2); ctx.stroke();
+
+    } else if (d.kind === 'roof') {
+      ctx.fillStyle = '#8b3a2a';
+      ctx.beginPath();
+      ctx.moveTo(0,-10); ctx.lineTo(-16,5); ctx.lineTo(16,5);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#5a1a0a'; ctx.lineWidth = 1;
+      for (let ti = -12; ti < 12; ti += 5) {
+        ctx.beginPath();
+        const ty = 5 - (Math.abs(ti)/16)*15;
+        ctx.moveTo(ti, ty); ctx.lineTo(ti+3, ty-4); ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -1547,46 +1654,93 @@ function drawHouse(h) {
 }
 
 // ── Draw: Lightning (during tornado) ─────────────────────
-function drawLightning() {
-  if (!tornado || tornado.alpha < 0.60) return;
-  const fp = frame % 215;
-  if (fp > 14) return;
-  const flashT = Math.max(0, 1 - fp / 14);
-  // Screen-wide flash
-  ctx.save();
-  ctx.globalAlpha = flashT * tornado.alpha * 0.13;
-  ctx.fillStyle = '#c4dcff';
-  ctx.fillRect(0, 0, W, H);
-  ctx.restore();
-  if (fp > 7) return;
-  // Bolt
-  const boltT = Math.max(0, 1 - fp / 7);
-  const tx = tornado.x - cam.x;
-  ctx.save();
-  ctx.globalAlpha = boltT * tornado.alpha * 0.82;
+// Multiple independent flash timers so strikes overlap
+const _ltimers = [
+  { period: 38, dur: 12 },
+  { period: 55, dur: 10 },
+  { period: 71, dur: 9  },
+  { period: 47, dur: 8  },
+  { period: 29, dur: 7  },
+];
+
+function drawBolt(tx, ty, seed, glowColor, isHyper) {
+  const steps = 8 + (seed % 4);
   ctx.lineCap = 'round';
-  let bx = tx + Math.sin(frame * 3.9) * 28, by = 0;
   // Glow pass
-  ctx.strokeStyle = 'rgba(160,200,255,0.50)';
-  ctx.lineWidth = 6;
-  ctx.beginPath(); ctx.moveTo(bx, by);
-  for (let i = 1; i <= 7; i++) {
-    bx += Math.sin(frame * 5.3 + i * 1.9) * 24;
-    by  = (i / 7) * (tornado.y - cam.y - 35);
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = isHyper ? 9 : 6;
+  ctx.beginPath();
+  let bx = tx + Math.sin(seed * 1.7) * 40, by = 0;
+  ctx.moveTo(bx, by);
+  for (let i = 1; i <= steps; i++) {
+    bx += Math.sin(seed * 3.1 + i * 2.3) * 28;
+    by  = (i / steps) * (ty - 30);
     ctx.lineTo(bx, by);
   }
   ctx.stroke();
-  // Core pass
-  bx = tx + Math.sin(frame * 3.9) * 28; by = 0;
-  ctx.strokeStyle = '#eef6ff';
-  ctx.lineWidth = 1.6;
+  // Bright core
+  bx = tx + Math.sin(seed * 1.7) * 40; by = 0;
+  ctx.strokeStyle = isHyper ? '#f0d0ff' : '#eef6ff';
+  ctx.lineWidth = 1.8;
   ctx.beginPath(); ctx.moveTo(bx, by);
-  for (let i = 1; i <= 7; i++) {
-    bx += Math.sin(frame * 5.3 + i * 1.9) * 24;
-    by  = (i / 7) * (tornado.y - cam.y - 35);
+  for (let i = 1; i <= steps; i++) {
+    bx += Math.sin(seed * 3.1 + i * 2.3) * 28;
+    by  = (i / steps) * (ty - 30);
     ctx.lineTo(bx, by);
   }
   ctx.stroke();
+  // Branch off mid-bolt
+  const branchStart = Math.floor(steps * 0.4);
+  bx = tx + Math.sin(seed * 1.7) * 40; by = 0;
+  for (let i = 1; i <= branchStart; i++) {
+    bx += Math.sin(seed * 3.1 + i * 2.3) * 28;
+    by  = (i / steps) * (ty - 30);
+  }
+  ctx.strokeStyle = isHyper ? 'rgba(220,140,255,0.55)' : 'rgba(160,200,255,0.45)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(bx, by);
+  let bbx = bx, bby = by;
+  for (let i = 0; i < 4; i++) {
+    bbx += Math.sin(seed * 7.1 + i * 3.3) * 20;
+    bby += (ty - 30) / steps * 1.4;
+    ctx.lineTo(bbx, bby);
+  }
+  ctx.stroke();
+}
+
+function drawLightning() {
+  if (!tornado || tornado.alpha < 0.55) return;
+  const tScale = tornado.scale || 1.0;
+  const isHyper = tScale > 1.2;
+  const tx = tornado.x - cam.x;
+  const ty = tornado.y - cam.y;
+  const glowColor = isHyper ? 'rgba(200,120,255,0.55)' : 'rgba(160,200,255,0.50)';
+
+  ctx.save();
+  let anyFlash = false;
+
+  for (let ti = 0; ti < _ltimers.length; ti++) {
+    const { period, dur } = _ltimers[ti];
+    const fp = frame % period;
+    if (fp >= dur) continue;
+    const t = Math.max(0, 1 - fp / dur);
+    anyFlash = true;
+
+    // Screen flash (each timer adds its own flash)
+    ctx.globalAlpha = t * tornado.alpha * 0.09;
+    ctx.fillStyle = isHyper ? '#d0a0ff' : '#c4dcff';
+    ctx.fillRect(0, 0, W, H);
+
+    // Draw 1-2 bolts per active timer
+    const boltCount = (ti % 2 === 0) ? 2 : 1;
+    for (let b = 0; b < boltCount; b++) {
+      ctx.globalAlpha = t * tornado.alpha * (b === 0 ? 0.90 : 0.55);
+      const seed = frame * 0.7 + ti * 13.7 + b * 7.3;
+      const boltX = tx + (b === 0 ? 0 : (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 80));
+      drawBolt(boltX, ty, seed, glowColor, isHyper);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -2122,6 +2276,7 @@ function draw() {
   drawMountains();
   drawAtmosphere();
   drawSnow();
+  drawWindDebris();
   drawGroundDrift();
   drawParticles();
   platforms.forEach(drawPlatform);
