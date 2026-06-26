@@ -2207,13 +2207,10 @@ function handleChallengeKey(code) {
       challenge.result = 'win';
       challenge.cooldown = 80;
       freezing = Math.max(0, freezing - 0.20);
-      if (!challenge.isTornadoEscape) {
-        // Normal win: calm winds for 10 seconds
-        wind.force = 0; wind.target = 0;
-        wind.timer = 0; wind.duration = 600;
-        if (tornado) tornado.alpha = 0;
-      }
-      // Tornado escape win: player blast-away handled in updateTornado
+      // Calm winds and dismiss tornado on any win
+      wind.force = 0; wind.target = 0;
+      wind.timer = 0; wind.duration = 600;
+      if (tornado) tornado.alpha = 0;
     }
   } else {
     challenge.result = 'fail';
