@@ -93,6 +93,8 @@
 <div id="test-menu">
   <button onclick="forceWind(0);closeTestMenu()">CALM</button>
   <button onclick="forceWind(5);closeTestMenu()">TAILWIND</button>
+  <button onclick="forceWind(8);closeTestMenu()">STRONG TAILWIND</button>
+  <button onclick="forceWind(9);closeTestMenu()">TAILWIND TORNADO</button>
   <button onclick="forceWind(1);closeTestMenu()">LIGHT HEADWIND</button>
   <button onclick="forceWind(2);closeTestMenu()">STRONG HEADWIND</button>
   <button onclick="forceWind(3);closeTestMenu()">GALE FORCE</button>
@@ -135,9 +137,11 @@ const WIND_STATES = [
   { tgt: -0.40, label:'STRONG HEADWIND', lvl:2, dMin: 90, dMax:170 },  // [2]
   { tgt: -0.65, label:'GALE FORCE',      lvl:3, dMin: 70, dMax:130 },  // [3]
   { tgt: -0.90, label:'STORM',           lvl:4, dMin: 55, dMax: 95 },  // [4]
-  { tgt:  0.28, label:'TAILWIND',        lvl:1, dMin:100, dMax:180 },  // [5]
-  { tgt: -1.40, label:'TORNADO',         lvl:5, dMin: 70, dMax:110 },  // [6]
-  { tgt: -2.00, label:'HYPERCANE',       lvl:6, dMin:220, dMax:380 },  // [7]
+  { tgt:  0.28, label:'TAILWIND',         lvl:1, dMin:100, dMax:180 },  // [5]
+  { tgt: -1.40, label:'TORNADO',          lvl:5, dMin: 70, dMax:110 },  // [6]
+  { tgt: -2.00, label:'HYPERCANE',        lvl:6, dMin:220, dMax:380 },  // [7]
+  { tgt:  0.65, label:'STRONG TAILWIND',  lvl:3, dMin: 80, dMax:150 },  // [8]
+  { tgt:  1.40, label:'TAILWIND TORNADO', lvl:5, dMin: 70, dMax:110 },  // [9]
 ];
 
 function getWindTier() {
@@ -149,39 +153,42 @@ function getWindTier() {
 function pickWindState() {
   const tier = getWindTier(), r = Math.random();
   if (tier === 0) {
-    if (r < 0.18) return WIND_STATES[0]; if (r < 0.40) return WIND_STATES[1];
-    if (r < 0.60) return WIND_STATES[2]; if (r < 0.75) return WIND_STATES[3];
-    if (r < 0.84) return WIND_STATES[4]; return WIND_STATES[5];
+    if (r < 0.18) return WIND_STATES[0]; if (r < 0.38) return WIND_STATES[1];
+    if (r < 0.56) return WIND_STATES[2]; if (r < 0.70) return WIND_STATES[3];
+    if (r < 0.80) return WIND_STATES[4]; return WIND_STATES[5];
   }
   if (tier === 1) {
-    if (r < 0.08) return WIND_STATES[0]; if (r < 0.28) return WIND_STATES[1];
-    if (r < 0.55) return WIND_STATES[2]; if (r < 0.76) return WIND_STATES[3];
-    if (r < 0.88) return WIND_STATES[4]; return WIND_STATES[5];
+    if (r < 0.08) return WIND_STATES[0]; if (r < 0.26) return WIND_STATES[1];
+    if (r < 0.50) return WIND_STATES[2]; if (r < 0.70) return WIND_STATES[3];
+    if (r < 0.82) return WIND_STATES[4]; if (r < 0.94) return WIND_STATES[5];
+    return WIND_STATES[8]; // strong tailwind
   }
   if (tier === 2) {
-    if (r < 0.12) return WIND_STATES[1]; if (r < 0.38) return WIND_STATES[2];
-    if (r < 0.65) return WIND_STATES[3]; if (r < 0.87) return WIND_STATES[4];
-    return WIND_STATES[5];
+    if (r < 0.10) return WIND_STATES[1]; if (r < 0.32) return WIND_STATES[2];
+    if (r < 0.56) return WIND_STATES[3]; if (r < 0.76) return WIND_STATES[4];
+    if (r < 0.88) return WIND_STATES[5]; return WIND_STATES[8];
   }
   if (tier === 3) {
-    if (r < 0.08) return WIND_STATES[2]; if (r < 0.30) return WIND_STATES[3];
-    if (r < 0.85) return WIND_STATES[4]; return WIND_STATES[5];
+    if (r < 0.06) return WIND_STATES[2]; if (r < 0.24) return WIND_STATES[3];
+    if (r < 0.60) return WIND_STATES[4]; if (r < 0.74) return WIND_STATES[5];
+    if (r < 0.90) return WIND_STATES[8]; return WIND_STATES[9]; // 10% tailwind tornado
   }
   if (tier === 4) {
-    if (r < 0.10) return WIND_STATES[3]; if (r < 0.78) return WIND_STATES[4];
-    if (r < 0.91) return WIND_STATES[5]; return WIND_STATES[6]; // 9% tornado
+    if (r < 0.08) return WIND_STATES[3]; if (r < 0.46) return WIND_STATES[4];
+    if (r < 0.58) return WIND_STATES[5]; if (r < 0.72) return WIND_STATES[8];
+    if (r < 0.86) return WIND_STATES[6]; return WIND_STATES[9]; // 14% tailwind tornado
   }
   if (tier === 5) {
-    if (r < 0.05) return WIND_STATES[3];
-    if (r < 0.55) return WIND_STATES[4];
-    if (r < 0.72) return WIND_STATES[5];
-    return WIND_STATES[6]; // 28% tornado
+    if (r < 0.04) return WIND_STATES[3]; if (r < 0.34) return WIND_STATES[4];
+    if (r < 0.46) return WIND_STATES[5]; if (r < 0.58) return WIND_STATES[8];
+    if (r < 0.78) return WIND_STATES[6]; if (r < 0.90) return WIND_STATES[9];
+    return WIND_STATES[7]; // 10% hypercane
   }
   // tier 6
-  if (r < 0.05) return WIND_STATES[4];
-  if (r < 0.25) return WIND_STATES[5];
-  if (r < 0.55) return WIND_STATES[6]; // tornado
-  return WIND_STATES[7]; // 45% hypercane
+  if (r < 0.04) return WIND_STATES[4];
+  if (r < 0.14) return WIND_STATES[5]; if (r < 0.22) return WIND_STATES[8];
+  if (r < 0.36) return WIND_STATES[9]; if (r < 0.56) return WIND_STATES[6];
+  return WIND_STATES[7]; // 44% hypercane
 }
 
 function windInfo() {
@@ -193,6 +200,8 @@ function windInfo() {
   if (f < -0.48)           return WIND_STATES[3]; // GALE
   if (f < -0.26)           return WIND_STATES[2];
   if (f < -0.08)           return WIND_STATES[1];
+  if (f >  1.00)           return WIND_STATES[9]; // TAILWIND TORNADO
+  if (f >  0.44)           return WIND_STATES[8]; // STRONG TAILWIND
   return WIND_STATES[5];
 }
 
@@ -370,7 +379,9 @@ function updatePlayer() {
   if (!chalActive && goRight()) { player.vx += 0.90 * sm; player.facing =  1; }
   if (chalActive || (!goLeft() && !goRight())) player.vx *= 0.76;
 
-  if (!chalActive) player.vx += wind.force * (player.onGround ? 0.75 : 1.5);
+  // Cap wind pull so hypercane doesn't instantly drag the player
+  const cappedForce = Math.max(-0.90, Math.min(0.90, wind.force));
+  if (!chalActive) player.vx += cappedForce * (player.onGround ? 0.75 : 1.5);
   player.vx  = Math.max(-5.5 * sm, Math.min(5.5 * sm, player.vx));
 
   if (!chalActive && doJump() && player.onGround) { player.vy = -12.5; player.onGround = false; }
@@ -443,7 +454,7 @@ function handleEnterExit() {
 
 function updateHouses() {
   const isStorm = wind.force < -0.68; // gale+ lifts normal houses
-  const isTornado = wind.force < -1.00;
+  const isTornado   = wind.force < -1.00 || wind.force > 1.00;
   const isHypercane = wind.force < -1.80; // tier 6 — metal bunkers are no longer safe
   // hypercane lifts houses violently
   const liftMult = isHypercane ? 2.8 : isTornado ? 1.6 : 1.0;
@@ -469,13 +480,15 @@ function updateHouses() {
 
 // ── Tornado update ────────────────────────────────────────
 function updateTornado() {
-  const isTornado = wind.force < -1.00;
+  const isTornado = wind.force < -1.00 || wind.force > 1.00;
 
   const isHypercane = wind.force < -1.80;
   const torScale = isHypercane ? 1.85 : 1.0;
 
   if (isTornado && !tornado) {
-    const spawnX = player.x + 900;
+    // Tailwind tornado comes from the left, headwind tornado from the right
+    const side = wind.force > 0 ? -1 : 1;
+    const spawnX = player.x + side * 900;
     const spawnY = baseGroundY(spawnX);
     const colors = ['#6a7a5a','#8a9a6a','#5a6a4a','#7a8070','#aaa090','#554433'];
     const debris = [];
@@ -492,7 +505,10 @@ function updateTornado() {
         x: spawnX, y: spawnY,
       });
     }
-    tornado = { x: spawnX, y: spawnY, angle: 0, alpha: 0, debris, scale: torScale };
+    // orbitAngle drives the circular roaming; orbitDir sets clockwise/counter
+    const startAngle = side > 0 ? 0 : Math.PI;
+    tornado = { x: spawnX, y: spawnY, angle: 0, alpha: 0, debris, scale: torScale,
+                orbitAngle: startAngle, orbitDir: Math.random() < 0.5 ? 1 : -1 };
   }
 
   if (!tornado) return;
@@ -506,10 +522,14 @@ function updateTornado() {
 
   if (isTornado) {
     tornado.alpha = Math.min(1, tornado.alpha + (isHypercane ? 0.028 : 0.016));
-    // Hypercane chases closer and faster
-    const targetOffset = tScale > 1.2 ? 180 : 280;
-    const chaseSpeed   = tScale > 1.2 ? 0.026 : 0.014;
-    const targetX = player.x + targetOffset;
+
+    // Orbit around the player — angle rotates slowly, radius pulses in/out
+    const orbitSpeed = (isHypercane ? 0.012 : 0.007) * (tornado.orbitDir || 1);
+    tornado.orbitAngle = (tornado.orbitAngle || 0) + orbitSpeed;
+    const baseRadius  = tScale > 1.2 ? 260 : 340;
+    const orbitRadius = baseRadius + Math.sin(tornado.orbitAngle * 1.7) * 120; // swoops in/out
+    const targetX = player.x + Math.cos(tornado.orbitAngle) * orbitRadius;
+    const chaseSpeed = tScale > 1.2 ? 0.030 : 0.018;
     tornado.x += (targetX - tornado.x) * chaseSpeed;
     tornado.y  = baseGroundY(tornado.x);
   } else {
@@ -532,11 +552,28 @@ function updateTornado() {
   const sheltered  = player.inHouse && (player.inHouse.type === 'bunker' || !isHypercane);
   if (tornado.alpha > 0.75 && !sheltered) {
     const dist = Math.abs((player.x + player.w / 2) - tornado.x);
+    const dangerRadius = killRadius * 2.8;
+
     if (dist < killRadius) {
-      const s = Math.floor(maxReach / 12);
-      if (s > bestScore) bestScore = s;
-      deathReason = 'tornado';
-      gState = 'dead';
+      // Only die if the tornado challenge was failed or not triggered
+      if (!challenge || challenge.result === 'fail') {
+        const s = Math.floor(maxReach / 12);
+        if (s > bestScore) bestScore = s;
+        deathReason = 'tornado';
+        gState = 'dead';
+      }
+    } else if (dist < dangerRadius && !challenge) {
+      // Proximity — spawn escape challenge
+      spawnTornadoChallenge();
+    }
+
+    // Win: blast player away from tornado
+    if (challenge && challenge.result === 'win' && challenge.isTornadoEscape) {
+      const escapeDir = (player.x + player.w / 2) < tornado.x ? -1 : 1;
+      player.vx += escapeDir * 8;
+      // Tornado briefly retreats
+      const retreatAngle = tornado.orbitAngle + Math.PI;
+      tornado.orbitAngle = retreatAngle;
     }
   }
 
@@ -553,7 +590,7 @@ function updateFreezing() {
     freezing = Math.max(0, freezing - warmRate);
     return;
   }
-  const tornadoBonus = wind.force < -1.80 ? 0.00130 : wind.force < -1.00 ? 0.00045 : 0;
+  const tornadoBonus = wind.force < -1.80 ? 0.00130 : (wind.force < -1.00 || wind.force > 1.00) ? 0.00045 : 0;
   const rate = 0.00008 + wind.strength * 0.00055 + tornadoBonus;
   freezing = Math.min(1, freezing + rate);
   if (freezing >= 1) {
@@ -1159,7 +1196,7 @@ function drawStickman() {
   seg(0, SY, lA, UA, lE, LA, 2.3);   // left arm   (front)
 
   // Torus head — donut ring sitting above the neck
-  const HCY = NY - 8;   // head centre (outer radius = 8, bottom touches neck)
+  const HCY = NY - 8;   // head centre
   ctx.fillStyle = C.text;
   ctx.beginPath();
   ctx.arc(0, HCY, 8,   0, Math.PI * 2, false);  // outer disc
@@ -1182,7 +1219,7 @@ function drawStickman() {
   }
 
   // Scarf — blows in world wind direction, anchored at neck
-  const scarfLocal = wind.force * -40 * f;
+  const scarfLocal = wind.force * 40 * f;
   ctx.strokeStyle = '#cc2020'; ctx.lineWidth = 3.5;
   ctx.beginPath(); ctx.moveTo(-2, NY);
   ctx.quadraticCurveTo(scarfLocal * 0.5, NY + 3, scarfLocal, NY + 9);
@@ -1554,79 +1591,207 @@ function drawTornado() {
   if (!tornado || tornado.alpha < 0.01) return;
   const sx = tornado.x - cam.x;
   const sy = tornado.y - cam.y;
-  if (sx < -280 || sx > W + 280) return;
+  if (sx < -400 || sx > W + 400) return;
 
   const tScale = tornado.scale || 1.0;
+  const isHyper = tScale > 1.2;
   const TH = 185 * tScale, TW = 100 * tScale, BW = 10 * tScale;
+  const a  = tornado.alpha;
+  const ang = tornado.angle;
 
   ctx.save();
-  ctx.globalAlpha = tornado.alpha;
 
-  // Cloud base (dark swirling mass at top)
-  const cloudGrd = ctx.createRadialGradient(sx, sy - TH, 0, sx, sy - TH, TW * 1.6);
-  cloudGrd.addColorStop(0,   'rgba(55,65,80,0.92)');
-  cloudGrd.addColorStop(0.5, 'rgba(45,55,70,0.65)');
-  cloudGrd.addColorStop(1,   'rgba(30,40,55,0)');
-  ctx.fillStyle = cloudGrd;
-  ctx.beginPath();
-  ctx.ellipse(sx, sy - TH, TW * 1.55, 38, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // ── 1. Outer storm halo ───────────────────────────────────
+  ctx.globalAlpha = a * 0.22;
+  const haloGrd = ctx.createRadialGradient(sx, sy - TH * 0.5, 0, sx, sy - TH * 0.5, TW * 3.2);
+  haloGrd.addColorStop(0,   isHyper ? 'rgba(80,20,120,0.55)' : 'rgba(30,40,70,0.55)');
+  haloGrd.addColorStop(0.5, isHyper ? 'rgba(50,10,90,0.25)'  : 'rgba(20,30,55,0.25)');
+  haloGrd.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = haloGrd;
+  ctx.fillRect(sx - TW * 3.5, sy - TH - 60, TW * 7, TH + 80);
 
-  // Funnel bands — rotating ellipses at each height slice
-  for (let band = 0; band < 14; band++) {
-    const t      = band / 13;
-    const bandY  = sy - TH + t * TH;
-    const bandW  = TW * (1 - t) + BW * t;
-    const twist  = tornado.angle * 1.8 + t * Math.PI * 5;
-    const swayX  = Math.sin(twist) * bandW * 0.28;
-    const alpha  = 0.18 + (1 - t) * 0.25;
-    ctx.globalAlpha = tornado.alpha * alpha;
-    ctx.strokeStyle = `rgba(${90 + (t * 40)|0},${110 + (t * 30)|0},${140 + (t * 20)|0},0.85)`;
-    ctx.lineWidth   = 1.8 + (1 - t) * 3.5;
-    ctx.lineCap     = 'round';
+  // ── 2. Massive storm cloud base ───────────────────────────
+  ctx.globalAlpha = a * 0.90;
+  for (let cl = 0; cl < 5; cl++) {
+    const cOff  = Math.sin(ang * 0.6 + cl * 1.3) * TW * 0.55;
+    const cOffy = Math.cos(ang * 0.4 + cl * 0.9) * 12;
+    const cR    = TW * (1.2 + cl * 0.28);
+    const cGrd  = ctx.createRadialGradient(sx + cOff, sy - TH + cOffy, 0, sx + cOff, sy - TH + cOffy, cR);
+    cGrd.addColorStop(0,   isHyper ? 'rgba(40,10,70,0.88)' : 'rgba(28,36,52,0.88)');
+    cGrd.addColorStop(0.45, isHyper ? 'rgba(30,8,58,0.60)' : 'rgba(20,28,44,0.60)');
+    cGrd.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = cGrd;
     ctx.beginPath();
-    ctx.ellipse(sx + swayX, bandY, bandW, bandW * 0.14, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx + cOff, sy - TH + cOffy, cR, 44 * tScale + cl * 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ── 3. Outer funnel wall — thick layered stripes ──────────
+  ctx.lineCap = 'round';
+  for (let band = 0; band < 28; band++) {
+    const t     = band / 27;
+    const bandY = sy - TH + t * TH;
+    const bandW = TW * (1 - t) + BW * t;
+    const twist = ang * 2.2 + t * Math.PI * 7;
+    const swayX = Math.sin(twist) * bandW * 0.32;
+    const swayX2= Math.sin(twist + 0.9) * bandW * 0.18;
+
+    // Shadow stripe (wide, dark)
+    ctx.globalAlpha = a * (0.12 + (1 - t) * 0.22);
+    ctx.strokeStyle = isHyper
+      ? `rgba(${(20 + t*30)|0},${(5 + t*10)|0},${(40 + t*20)|0},0.9)`
+      : `rgba(${(30 + t*40)|0},${(40 + t*35)|0},${(60 + t*30)|0},0.9)`;
+    ctx.lineWidth = (3.5 + (1 - t) * 5) * tScale;
+    ctx.beginPath();
+    ctx.ellipse(sx + swayX, bandY, bandW, bandW * 0.13, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Highlight stripe (thin, lighter)
+    ctx.globalAlpha = a * (0.08 + (1 - t) * 0.14);
+    ctx.strokeStyle = isHyper
+      ? `rgba(180,80,255,0.7)`
+      : `rgba(140,170,210,0.7)`;
+    ctx.lineWidth = (0.8 + (1 - t) * 1.4) * tScale;
+    ctx.beginPath();
+    ctx.ellipse(sx + swayX2, bandY, bandW * 0.7, bandW * 0.09, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  // Central filled cone (gives body to the funnel)
-  ctx.globalAlpha = tornado.alpha * 0.32;
-  const ctrl = Math.sin(tornado.angle * 0.9) * 22;
-  const fGrd = ctx.createLinearGradient(sx - TW, sy - TH, sx, sy);
-  fGrd.addColorStop(0,   'rgba(70,90,120,0.8)');
-  fGrd.addColorStop(0.6, 'rgba(55,75,105,0.55)');
-  fGrd.addColorStop(1,   'rgba(35,50,80,0.2)');
-  ctx.fillStyle = fGrd;
+  // ── 4. Inner condensation funnel (bright core) ────────────
+  ctx.globalAlpha = a * 0.28;
+  const innerW = TW * 0.42, innerBW = BW * 0.6;
+  const coneGrd = ctx.createLinearGradient(sx, sy - TH, sx, sy);
+  if (isHyper) {
+    coneGrd.addColorStop(0,   'rgba(140,40,220,0.85)');
+    coneGrd.addColorStop(0.35,'rgba(100,20,180,0.65)');
+    coneGrd.addColorStop(0.72,'rgba(70,10,130,0.40)');
+    coneGrd.addColorStop(1,   'rgba(40,5,80,0.15)');
+  } else {
+    coneGrd.addColorStop(0,   'rgba(160,185,220,0.85)');
+    coneGrd.addColorStop(0.35,'rgba(110,140,190,0.65)');
+    coneGrd.addColorStop(0.72,'rgba(70,100,155,0.40)');
+    coneGrd.addColorStop(1,   'rgba(40,65,110,0.15)');
+  }
+  ctx.fillStyle = coneGrd;
+  const ctrl = Math.sin(ang * 1.1) * 28 * tScale;
   ctx.beginPath();
-  ctx.moveTo(sx - TW, sy - TH);
-  ctx.quadraticCurveTo(sx + ctrl, sy - TH * 0.5, sx, sy);
-  ctx.quadraticCurveTo(sx - ctrl, sy - TH * 0.5, sx + TW, sy - TH);
+  ctx.moveTo(sx - innerW, sy - TH);
+  ctx.quadraticCurveTo(sx + ctrl, sy - TH * 0.48, sx, sy);
+  ctx.quadraticCurveTo(sx - ctrl, sy - TH * 0.48, sx + innerW, sy - TH);
   ctx.closePath();
   ctx.fill();
 
-  // Ground swirl at the tip
-  ctx.globalAlpha = tornado.alpha * 0.40;
-  const swirlR = 65 * tScale;
-  const swGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, swirlR);
-  swGrd.addColorStop(0,   'rgba(80,100,130,0.6)');
-  swGrd.addColorStop(0.5, 'rgba(60,80,110,0.3)');
-  swGrd.addColorStop(1,   'rgba(40,60,90,0)');
-  ctx.fillStyle = swGrd;
+  // ── 5. Spiral rope lines along the funnel ─────────────────
+  ctx.lineCap = 'round';
+  for (let rope = 0; rope < 4; rope++) {
+    const ropeOff = (rope / 4) * Math.PI * 2;
+    ctx.globalAlpha = a * 0.30;
+    ctx.strokeStyle = isHyper ? 'rgba(200,100,255,0.65)' : 'rgba(180,205,240,0.55)';
+    ctx.lineWidth = 1.4 * tScale;
+    ctx.beginPath();
+    for (let i = 0; i <= 24; i++) {
+      const t     = i / 24;
+      const bandW = TW * (1 - t) + BW * t;
+      const spiralAng = ang * 2.5 + ropeOff + t * Math.PI * 6;
+      const rx = sx + Math.cos(spiralAng) * bandW * 0.88;
+      const ry = sy - TH + t * TH + Math.sin(spiralAng * 0.7) * 5 * tScale;
+      i === 0 ? ctx.moveTo(rx, ry) : ctx.lineTo(rx, ry);
+    }
+    ctx.stroke();
+  }
+
+  // ── 6. Ground contact zone — dust & dirt layers ───────────
+  // Outer kicked-up dust ring
+  ctx.globalAlpha = a * 0.38;
+  const dustR = 110 * tScale;
+  const dustGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, dustR);
+  dustGrd.addColorStop(0,   isHyper ? 'rgba(100,30,160,0.70)' : 'rgba(100,80,50,0.70)');
+  dustGrd.addColorStop(0.40, isHyper ? 'rgba(70,15,110,0.45)' : 'rgba(80,60,35,0.45)');
+  dustGrd.addColorStop(0.75,'rgba(50,40,25,0.20)');
+  dustGrd.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = dustGrd;
   ctx.beginPath();
-  ctx.ellipse(sx, sy, swirlR, 16 * tScale, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx, sy, dustR, 26 * tScale, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Debris
-  ctx.globalAlpha = tornado.alpha;
+  // Spinning dust streaks at the base
+  ctx.globalAlpha = a * 0.45;
+  ctx.strokeStyle = isHyper ? 'rgba(160,60,255,0.55)' : 'rgba(140,110,70,0.55)';
+  ctx.lineWidth = 2 * tScale;
+  for (let ds = 0; ds < 10; ds++) {
+    const da = ang * 3.5 + (ds / 10) * Math.PI * 2;
+    const dr1 = dustR * 0.22, dr2 = dustR * (0.55 + (ds % 3) * 0.15);
+    ctx.beginPath();
+    ctx.moveTo(sx + Math.cos(da) * dr1, sy + Math.sin(da) * dr1 * 0.22);
+    ctx.lineTo(sx + Math.cos(da) * dr2, sy + Math.sin(da) * dr2 * 0.22);
+    ctx.stroke();
+  }
+
+  // Inner vortex glow at tip
+  ctx.globalAlpha = a * 0.55;
+  const tipGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, 30 * tScale);
+  tipGrd.addColorStop(0, isHyper ? 'rgba(220,130,255,0.90)' : 'rgba(200,220,255,0.90)');
+  tipGrd.addColorStop(0.5, isHyper ? 'rgba(140,50,220,0.55)' : 'rgba(140,170,220,0.55)');
+  tipGrd.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = tipGrd;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy, 30 * tScale, 9 * tScale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── 7. Rain curtain around the tornado ───────────────────
+  ctx.globalAlpha = a * 0.18;
+  ctx.strokeStyle = isHyper ? 'rgba(180,100,255,0.55)' : 'rgba(160,200,240,0.55)';
+  ctx.lineWidth = 0.8;
+  for (let ri = 0; ri < 22; ri++) {
+    const ra = (ri / 22) * Math.PI * 2 + ang * 0.4;
+    const rDist = TW * (1.15 + (ri % 3) * 0.22);
+    const rx = sx + Math.cos(ra) * rDist;
+    const ry = sy - TH * (0.15 + (ri % 4) * 0.18);
+    const rLen = 18 + (ri % 5) * 12;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    ctx.lineTo(rx + Math.cos(ang + ri) * 4, ry + rLen);
+    ctx.stroke();
+  }
+
+  // ── 8. Debris (larger, with shadow) ──────────────────────
+  ctx.globalAlpha = a;
   for (const d of tornado.debris) {
     const dx = d.x - cam.x, dy = d.y - cam.y;
-    if (dx < -20 || dx > W + 20 || dy < -20 || dy > H + 20) continue;
+    if (dx < -40 || dx > W + 40 || dy < -40 || dy > H + 40) continue;
     ctx.save();
     ctx.translate(dx, dy);
-    ctx.rotate(tornado.angle * d.rotSpeed);
+    ctx.rotate(ang * d.rotSpeed);
+    // Shadow
+    ctx.globalAlpha = a * 0.30;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(-d.w / 2 + 2, -d.h / 2 + 2, d.w, d.h);
+    // Piece
+    ctx.globalAlpha = a;
     ctx.fillStyle = d.color;
     ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
+    // Highlight edge
+    ctx.globalAlpha = a * 0.40;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 0.6;
+    ctx.strokeRect(-d.w / 2, -d.h / 2, d.w, d.h);
     ctx.restore();
+  }
+
+  // ── 9. Electric inner glow (hypercane only) ───────────────
+  if (isHyper) {
+    for (let vein = 0; vein < 6; vein++) {
+      const vA = ang * 4 + (vein / 6) * Math.PI * 2;
+      const vT = (Math.sin(ang * 8 + vein * 2.1) + 1) / 2; // 0-1 flicker
+      ctx.globalAlpha = a * vT * 0.45;
+      ctx.strokeStyle = 'rgba(220,160,255,0.90)';
+      ctx.lineWidth = 0.9;
+      const vR1 = BW * 0.5, vR2 = TW * (0.3 + vT * 0.4);
+      const vFrac = 0.2 + vT * 0.5;
+      const vx1 = sx + Math.cos(vA) * vR1, vy1 = sy - TH * 0.05;
+      const vx2 = sx + Math.cos(vA + 0.5) * vR2, vy2 = sy - TH * vFrac;
+      ctx.beginPath(); ctx.moveTo(vx1, vy1); ctx.lineTo(vx2, vy2); ctx.stroke();
+    }
   }
 
   ctx.restore();
@@ -2011,12 +2176,22 @@ function spawnChallenge() {
   const wi = windInfo();
   if (wi.lvl < 3) return;
   if (player.inHouse && player.inHouse.type === 'bunker') return;
-  const count = Math.min(5, wi.lvl); // 3 keys at gale, 5 at gale+
+  const count = Math.min(5, wi.lvl);
   const seq = [];
   for (let i = 0; i < count; i++)
     seq.push(CHAL_POOL[Math.floor(Math.random() * CHAL_POOL.length)]);
-  const maxTimer = Math.max(180, 480 - wi.lvl * 30); // harder at higher tiers
-  challenge = { seq, idx: 0, timer: maxTimer, maxTimer, result: null, cooldown: 0 };
+  const maxTimer = Math.max(180, 480 - wi.lvl * 30);
+  challenge = { seq, idx: 0, timer: maxTimer, maxTimer, result: null, cooldown: 0, isTornadoEscape: false };
+}
+
+function spawnTornadoChallenge() {
+  if (player.inHouse && player.inHouse.type === 'bunker') return;
+  // Harder than normal: 4–5 keys, tight timer
+  const count = 3 + Math.floor(Math.random() * 2);
+  const seq = [];
+  for (let i = 0; i < count; i++)
+    seq.push(CHAL_POOL[Math.floor(Math.random() * CHAL_POOL.length)]);
+  challenge = { seq, idx: 0, timer: 300, maxTimer: 300, result: null, cooldown: 60, isTornadoEscape: true };
 }
 
 function handleChallengeKey(code) {
@@ -2028,10 +2203,13 @@ function handleChallengeKey(code) {
       challenge.result = 'win';
       challenge.cooldown = 80;
       freezing = Math.max(0, freezing - 0.20);
-      // Calm winds for 10 seconds as reward
-      wind.force = 0; wind.target = 0;
-      wind.timer = 0; wind.duration = 600;
-      if (tornado) tornado.alpha = 0;
+      if (!challenge.isTornadoEscape) {
+        // Normal win: calm winds for 10 seconds
+        wind.force = 0; wind.target = 0;
+        wind.timer = 0; wind.duration = 600;
+        if (tornado) tornado.alpha = 0;
+      }
+      // Tornado escape win: player blast-away handled in updateTornado
     }
   } else {
     challenge.result = 'fail';
@@ -2042,7 +2220,6 @@ function handleChallengeKey(code) {
 
 function updateChallenge() {
   if (!challenge) {
-    if (frame % 420 === 0 && gState === 'playing') spawnChallenge();
     return;
   }
   if (challenge.result !== null) {
@@ -2081,7 +2258,8 @@ function drawChallenge() {
   ctx.font = 'bold 9px Courier New';
   ctx.textAlign = 'center';
   ctx.fillStyle = isWin ? '#6bcb77' : isFail ? '#e84040' : '#c8e4f5';
-  ctx.fillText(isWin ? '✓ SURVIVED!' : isFail ? '✗ OVERWHELMED' : 'BRACE YOURSELF!', cx, cy - 22);
+  const activeLabel = challenge.isTornadoEscape ? 'ESCAPE THE TORNADO!' : 'BRACE YOURSELF!';
+  ctx.fillText(isWin ? '✓ SURVIVED!' : isFail ? '✗ OVERWHELMED' : activeLabel, cx, cy - 22);
 
   // Timer bar
   if (!isWin && !isFail) {
