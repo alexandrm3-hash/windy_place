@@ -13,6 +13,7 @@
   }
   #wrapper {
     position: relative;
+    isolation: isolate;
     width: 900px;
     transform-origin: center center;
     flex-shrink: 0;
@@ -37,6 +38,67 @@
   <div id="game-title">Windchill</div>
   <canvas id="game" width="900" height="520"></canvas>
   <div id="hint">Arrow keys / WASD &nbsp;·&nbsp; Space to jump &nbsp;·&nbsp; Left Shift to sprint &nbsp;·&nbsp; E to enter/exit house &nbsp;·&nbsp; R to restart</div>
+</div>
+
+<style>
+#test-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  padding: 4px 10px;
+  background: rgba(0,0,0,0.55);
+  color: rgba(180,215,240,0.70);
+  border: 1px solid rgba(180,215,240,0.22);
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 10;
+}
+#test-btn:hover { background: rgba(0,0,0,0.75); }
+#test-menu {
+  display: none;
+  position: absolute;
+  top: 34px;
+  right: 10px;
+  background: rgba(6,12,24,0.92);
+  border: 1px solid rgba(180,215,240,0.18);
+  border-radius: 5px;
+  overflow: hidden;
+  z-index: 10;
+}
+#test-menu.open { display: block; }
+#test-menu button {
+  display: block;
+  width: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 6px 16px;
+  background: none;
+  color: rgba(180,215,240,0.80);
+  border: none;
+  border-bottom: 1px solid rgba(180,215,240,0.08);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+#test-menu button:last-child { border-bottom: none; }
+#test-menu button:hover { background: rgba(255,255,255,0.08); }
+#test-menu button.hyper { color: #cc44ff; }
+</style>
+
+<div id="test-btn" onclick="toggleTestMenu()">⚡ WIND</div>
+<div id="test-menu">
+  <button onclick="forceWind(0);closeTestMenu()">CALM</button>
+  <button onclick="forceWind(5);closeTestMenu()">TAILWIND</button>
+  <button onclick="forceWind(1);closeTestMenu()">LIGHT HEADWIND</button>
+  <button onclick="forceWind(2);closeTestMenu()">STRONG HEADWIND</button>
+  <button onclick="forceWind(3);closeTestMenu()">GALE FORCE</button>
+  <button onclick="forceWind(4);closeTestMenu()">STORM</button>
+  <button onclick="forceWind(6);closeTestMenu()">TORNADO</button>
+  <button class="hyper" onclick="forceWind(7);closeTestMenu()">HYPERCANE</button>
 </div>
 
 <script>
@@ -75,9 +137,14 @@ const WIND_STATES = [
   { tgt: -0.90, label:'STORM',           lvl:4, dMin: 55, dMax: 95 },  // [4]
   { tgt:  0.28, label:'TAILWIND',        lvl:1, dMin:100, dMax:180 },  // [5]
   { tgt: -1.40, label:'TORNADO',         lvl:5, dMin: 70, dMax:110 },  // [6]
+  { tgt: -2.00, label:'HYPERCANE',       lvl:6, dMin: 55, dMax: 85 },  // [7]
 ];
 
-function getWindTier() { return Math.min(5, Math.floor(maxReach / (12 * 200))); }
+function getWindTier() {
+  const m = Math.floor(maxReach / 12);
+  if (m >= 1500) return 6;
+  return Math.min(5, Math.floor(maxReach / (12 * 200)));
+}
 
 function pickWindState() {
   const tier = getWindTier(), r = Math.random();
@@ -104,16 +171,23 @@ function pickWindState() {
     if (r < 0.10) return WIND_STATES[3]; if (r < 0.78) return WIND_STATES[4];
     if (r < 0.91) return WIND_STATES[5]; return WIND_STATES[6]; // 9% tornado
   }
-  // tier 5+
-  if (r < 0.05) return WIND_STATES[3];
-  if (r < 0.60) return WIND_STATES[4];
-  if (r < 0.78) return WIND_STATES[5];
-  return WIND_STATES[6]; // 22% tornado
+  if (tier === 5) {
+    if (r < 0.05) return WIND_STATES[3];
+    if (r < 0.55) return WIND_STATES[4];
+    if (r < 0.72) return WIND_STATES[5];
+    return WIND_STATES[6]; // 28% tornado
+  }
+  // tier 6
+  if (r < 0.05) return WIND_STATES[4];
+  if (r < 0.25) return WIND_STATES[5];
+  if (r < 0.55) return WIND_STATES[6]; // tornado
+  return WIND_STATES[7]; // 45% hypercane
 }
 
 function windInfo() {
   const f = wind.force;
   if (Math.abs(f) < 0.04) return WIND_STATES[0];
+  if (f < -1.80)           return WIND_STATES[7]; // HYPERCANE
   if (f < -1.00)           return WIND_STATES[6]; // TORNADO
   if (f < -0.72)           return WIND_STATES[4]; // STORM
   if (f < -0.48)           return WIND_STATES[3]; // GALE
@@ -212,6 +286,7 @@ function init() {
   particles        = [];
   snowflakes       = [];
   tornado          = null;
+  challenge        = null;
   stamina          = 1;
   staminaDepleted  = false;
   staminaCooldown  = 0;
@@ -225,6 +300,7 @@ window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'KeyR') init();
   if (e.code === 'KeyE' && gState === 'playing' && !e.repeat) handleEnterExit();
+  if (gState === 'playing' && !e.repeat) handleChallengeKey(e.code);
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))
     e.preventDefault();
 });
@@ -350,23 +426,24 @@ function handleEnterExit() {
 function updateHouses() {
   const isStorm = wind.force < -0.68; // gale+ lifts normal houses
   const isTornado = wind.force < -1.00;
-  // tornado lifts houses faster
-  const liftMult = isTornado ? 1.6 : 1.0;
+  const isHypercane = wind.force < -1.80; // tier 6 — metal bunkers are no longer safe
+  // hypercane lifts houses violently
+  const liftMult = isHypercane ? 2.8 : isTornado ? 1.6 : 1.0;
   for (const h of houses) {
     if (h.flying) {
-      h.vy  = Math.max(-14, h.vy  - 0.18 * liftMult);
-      h.vx  = Math.max(-18, h.vx  + wind.force * 0.5 * liftMult);
+      h.vy  = Math.max(-20, h.vy  - 0.22 * liftMult);
+      h.vx  = Math.max(-24, h.vx  + wind.force * 0.5 * liftMult);
       h.x  += h.vx;
       h.y  += h.vy;
       h.angle += h.vx * 0.015;
       if (h.y - cam.y < -80) h.alpha -= 0.025;
-    } else if (isStorm && h.type !== 'metal') { // metal bunkers never fly
+    } else if ((isStorm && h.type !== 'metal') || (isHypercane && h.type === 'metal')) {
       h.flyTimer--;
       if (h.flyTimer <= 0) {
         h.flying = true;
         if (player.inHouse === h) player.inHouse = null; // eject player
       }
-    } else if (!isStorm || h.type === 'metal') {
+    } else if (!isStorm || (h.type === 'metal' && !isHypercane)) {
       h.flyTimer = h.flyDelay; // reset if storm passes (or immune)
     }
   }
@@ -376,35 +453,46 @@ function updateHouses() {
 function updateTornado() {
   const isTornado = wind.force < -1.00;
 
+  const isHypercane = wind.force < -1.80;
+  const torScale = isHypercane ? 1.85 : 1.0;
+
   if (isTornado && !tornado) {
     const spawnX = player.x + 900;
     const spawnY = baseGroundY(spawnX);
     const colors = ['#6a7a5a','#8a9a6a','#5a6a4a','#7a8070','#aaa090','#554433'];
     const debris = [];
-    for (let i = 0; i < 18; i++) {
+    const debrisCount = isHypercane ? 34 : 18;
+    for (let i = 0; i < debrisCount; i++) {
       debris.push({
         angle:    Math.random() * Math.PI * 2,
-        radius:   35 + Math.random() * 75,
+        radius:   (35 + Math.random() * 75) * torScale,
         fracH:    0.15 + Math.random() * 0.70,
-        speed:    0.035 + Math.random() * 0.055,
+        speed:    (0.035 + Math.random() * 0.055) * (isHypercane ? 1.5 : 1),
         rotSpeed: 1 + Math.random() * 2,
         color:    colors[Math.floor(Math.random() * colors.length)],
-        w: 3 + Math.random() * 9, h: 2 + Math.random() * 5,
+        w: (3 + Math.random() * 9) * torScale, h: (2 + Math.random() * 5) * torScale,
         x: spawnX, y: spawnY,
       });
     }
-    tornado = { x: spawnX, y: spawnY, angle: 0, alpha: 0, debris };
+    tornado = { x: spawnX, y: spawnY, angle: 0, alpha: 0, debris, scale: torScale };
   }
 
   if (!tornado) return;
 
-  tornado.angle += 0.07;
+  // Dynamically grow/shrink tornado when wind escalates to hypercane or back
+  const targetScale = isHypercane ? 1.85 : 1.0;
+  tornado.scale = (tornado.scale || 1.0) + (targetScale - (tornado.scale || 1.0)) * 0.025;
+
+  const tScale = tornado.scale;
+  tornado.angle += isHypercane ? 0.12 : 0.07;
 
   if (isTornado) {
-    tornado.alpha = Math.min(1, tornado.alpha + 0.016);
-    // Chase player — always ~280 world units ahead (to the right)
-    const targetX = player.x + 280;
-    tornado.x += (targetX - tornado.x) * 0.014;
+    tornado.alpha = Math.min(1, tornado.alpha + (isHypercane ? 0.028 : 0.016));
+    // Hypercane chases closer and faster
+    const targetOffset = tScale > 1.2 ? 180 : 280;
+    const chaseSpeed   = tScale > 1.2 ? 0.026 : 0.014;
+    const targetX = player.x + targetOffset;
+    tornado.x += (targetX - tornado.x) * chaseSpeed;
     tornado.y  = baseGroundY(tornado.x);
   } else {
     tornado.alpha = Math.max(0, tornado.alpha - 0.013);
@@ -413,18 +501,20 @@ function updateTornado() {
   }
 
   // Update orbiting debris
+  const TW_d = 100 * tScale, BW_d = 10 * tScale, TH_d = 185 * tScale;
   for (const d of tornado.debris) {
     d.angle += d.speed;
-    const TW = 100, BW = 10;
-    const bandW = TW * (1 - d.fracH) + BW * d.fracH;
+    const bandW = TW_d * (1 - d.fracH) + BW_d * d.fracH;
     d.x = tornado.x + Math.cos(d.angle) * bandW;
-    d.y = tornado.y - 185 * d.fracH + Math.sin(d.angle * 1.4) * 14;
+    d.y = tornado.y - TH_d * d.fracH + Math.sin(d.angle * 1.4) * 14 * tScale;
   }
 
-  // Proximity kill — being overtaken by the tornado is lethal (metal house protects)
-  if (tornado.alpha > 0.75 && !player.inHouse) {
+  // Proximity kill — hypercane kills through metal bunkers too
+  const killRadius = 58 * tScale;
+  const sheltered  = player.inHouse && !isHypercane; // metal offers no protection in hypercane
+  if (tornado.alpha > 0.75 && !sheltered) {
     const dist = Math.abs((player.x + player.w / 2) - tornado.x);
-    if (dist < 58) {
+    if (dist < killRadius) {
       const s = Math.floor(maxReach / 12);
       if (s > bestScore) bestScore = s;
       deathReason = 'tornado';
@@ -444,7 +534,7 @@ function updateFreezing() {
     freezing = Math.max(0, freezing - warmRate);
     return;
   }
-  const tornadoBonus = wind.force < -1.00 ? 0.00045 : 0;
+  const tornadoBonus = wind.force < -1.80 ? 0.00130 : wind.force < -1.00 ? 0.00045 : 0;
   const rate = 0.00008 + wind.strength * 0.00055 + tornadoBonus;
   freezing = Math.min(1, freezing + rate);
   if (freezing >= 1) {
@@ -493,6 +583,7 @@ function update() {
   updateHouses();
   updateTornado();
   updateFreezing();
+  updateChallenge();
 
   // Wind streak particles (blizzard streaks in strong wind)
   if (Math.abs(wind.force) > 0.20 && Math.random() < Math.abs(wind.force) * 3) {
@@ -1337,7 +1428,8 @@ function drawTornado() {
   const sy = tornado.y - cam.y;
   if (sx < -280 || sx > W + 280) return;
 
-  const TH = 185, TW = 100, BW = 10;
+  const tScale = tornado.scale || 1.0;
+  const TH = 185 * tScale, TW = 100 * tScale, BW = 10 * tScale;
 
   ctx.save();
   ctx.globalAlpha = tornado.alpha;
@@ -1386,13 +1478,14 @@ function drawTornado() {
 
   // Ground swirl at the tip
   ctx.globalAlpha = tornado.alpha * 0.40;
-  const swGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, 65);
+  const swirlR = 65 * tScale;
+  const swGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, swirlR);
   swGrd.addColorStop(0,   'rgba(80,100,130,0.6)');
   swGrd.addColorStop(0.5, 'rgba(60,80,110,0.3)');
   swGrd.addColorStop(1,   'rgba(40,60,90,0)');
   ctx.fillStyle = swGrd;
   ctx.beginPath();
-  ctx.ellipse(sx, sy, 65, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(sx, sy, swirlR, 16 * tScale, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Debris
@@ -1449,7 +1542,7 @@ function drawHUD() {
   // Score + tier (top left)
   const score = Math.floor(maxReach / 12);
   const tier  = getWindTier();
-  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020'][tier] || '#cc2020';
+  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff'][tier] || '#cc44ff';
 
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.48)'; rrect(14,10,164,40,5); ctx.fill();
@@ -1461,9 +1554,9 @@ function drawHUD() {
 
   ctx.fillStyle = tierC; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'right';
   ctx.fillText('TIER ' + tier, 170, 22);
-  if (tier < 5) {
+  if (tier < 6) {
     ctx.fillStyle = C.dim; ctx.font = '9px Courier New';
-    ctx.fillText((tier+1)*200 + 'm', 170, 40);
+    ctx.fillText((tier === 5 ? 1500 : (tier+1)*200) + 'm', 170, 40);
   } else {
     ctx.fillStyle = tierC; ctx.font = '9px Courier New'; ctx.fillText('MAX', 170, 40);
   }
@@ -1661,6 +1754,7 @@ function draw() {
   drawHUD();
   drawFreezeMeter();
   drawStaminaBar();
+  drawChallenge();
   drawOverlay();
 }
 
@@ -1779,6 +1873,144 @@ const WindAudio = (() => {
 
   return { init, update };
 })();
+
+// ── Wind Challenge minigame ───────────────────────────────
+let challenge = null;
+const CHAL_POOL   = ['KeyQ','KeyT','KeyF','KeyG','KeyH','KeyZ','KeyX','KeyC'];
+const CHAL_LABELS = { KeyQ:'Q', KeyT:'T', KeyF:'F', KeyG:'G', KeyH:'H', KeyZ:'Z', KeyX:'X', KeyC:'C' };
+
+function spawnChallenge() {
+  const wi = windInfo();
+  if (wi.lvl < 3) return;
+  const count = Math.min(5, wi.lvl); // 3 keys at gale, 5 at gale+
+  const seq = [];
+  for (let i = 0; i < count; i++)
+    seq.push(CHAL_POOL[Math.floor(Math.random() * CHAL_POOL.length)]);
+  const maxTimer = Math.max(100, 280 - wi.lvl * 30); // harder at higher tiers
+  challenge = { seq, idx: 0, timer: maxTimer, maxTimer, result: null, cooldown: 0 };
+}
+
+function handleChallengeKey(code) {
+  if (!challenge || challenge.result !== null) return;
+  if (!CHAL_LABELS[code]) return;
+  if (challenge.seq[challenge.idx] === code) {
+    challenge.idx++;
+    if (challenge.idx >= challenge.seq.length) {
+      challenge.result = 'win';
+      challenge.cooldown = 80;
+      freezing = Math.max(0, freezing - 0.20);
+    }
+  } else {
+    challenge.result = 'fail';
+    challenge.cooldown = 80;
+    freezing = Math.min(1, freezing + 0.18);
+  }
+}
+
+function updateChallenge() {
+  if (!challenge) {
+    if (frame % 420 === 0 && gState === 'playing') spawnChallenge();
+    return;
+  }
+  if (challenge.result !== null) {
+    if (--challenge.cooldown <= 0) challenge = null;
+    return;
+  }
+  if (--challenge.timer <= 0) {
+    challenge.result = 'fail';
+    challenge.cooldown = 80;
+    freezing = Math.min(1, freezing + 0.18);
+  }
+}
+
+function drawChallenge() {
+  if (!challenge) return;
+  const wi = windInfo();
+  if (wi.lvl < 3) return;
+
+  const cx = W / 2, cy = H - 90;
+  const isWin  = challenge.result === 'win';
+  const isFail = challenge.result === 'fail';
+  const pw = challenge.seq.length * 46 + 28;
+
+  ctx.save();
+
+  // Pill background
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  rrect(cx - pw / 2, cy - 38, pw, 60, 8);
+  ctx.fill();
+  ctx.strokeStyle = isWin ? 'rgba(107,203,119,0.55)' : isFail ? 'rgba(232,64,64,0.55)' : 'rgba(180,215,240,0.20)';
+  ctx.lineWidth = 1.2;
+  rrect(cx - pw / 2, cy - 38, pw, 60, 8);
+  ctx.stroke();
+
+  // Label
+  ctx.font = 'bold 9px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = isWin ? '#6bcb77' : isFail ? '#e84040' : '#c8e4f5';
+  ctx.fillText(isWin ? '✓ SURVIVED!' : isFail ? '✗ OVERWHELMED' : 'BRACE YOURSELF!', cx, cy - 22);
+
+  // Timer bar
+  if (!isWin && !isFail) {
+    const bw = pw - 20, bt = challenge.timer / challenge.maxTimer;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(cx - bw / 2, cy - 14, bw, 3);
+    ctx.fillStyle = bt > 0.5 ? '#6bcb77' : bt > 0.25 ? '#e8c84a' : '#e84040';
+    ctx.fillRect(cx - bw / 2, cy - 14, bw * bt, 3);
+  }
+
+  // Key boxes
+  const startX = cx - (challenge.seq.length * 46) / 2 + 23;
+  for (let i = 0; i < challenge.seq.length; i++) {
+    const kx = startX + i * 46;
+    const done   = i < challenge.idx;
+    const active = i === challenge.idx && !isWin && !isFail;
+
+    ctx.fillStyle = done   ? 'rgba(107,203,119,0.25)'
+                  : active ? 'rgba(200,228,245,0.14)'
+                  :          'rgba(255,255,255,0.04)';
+    rrect(kx - 15, cy - 8, 30, 28, 5);
+    ctx.fill();
+    ctx.strokeStyle = done   ? '#6bcb77'
+                    : active ? '#ffffff'
+                    :          'rgba(180,215,240,0.22)';
+    ctx.lineWidth = active ? 1.8 : 1.2;
+    rrect(kx - 15, cy - 8, 30, 28, 5);
+    ctx.stroke();
+
+    ctx.font = `bold ${active ? 15 : 12}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = done   ? '#6bcb77'
+                  : active ? '#ffffff'
+                  :          'rgba(180,215,240,0.38)';
+    ctx.fillText(CHAL_LABELS[challenge.seq[i]], kx, cy + 13);
+  }
+
+  ctx.restore();
+}
+
+// ── Test panel ────────────────────────────────────────────
+function toggleTestMenu() {
+  document.getElementById('test-menu').classList.toggle('open');
+}
+function closeTestMenu() {
+  document.getElementById('test-menu').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#test-btn') && !e.target.closest('#test-menu'))
+    closeTestMenu();
+});
+
+function forceWind(stateIndex) {
+  if (gState !== 'playing') init();
+  const ws = WIND_STATES[stateIndex];
+  wind.target   = ws.tgt;
+  wind.force    = ws.tgt;   // snap instantly — no lerp wait
+  wind.timer    = 0;
+  wind.duration = ws.dMax;
+  // Force tier high enough to sustain hypercane/tornado probabilities
+  if (stateIndex >= 6) maxReach = Math.max(maxReach, 1500 * 12);
+}
 
 function applyScale() {
   const scale = Math.min(window.innerWidth / 900, window.innerHeight / 534);
