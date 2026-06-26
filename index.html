@@ -255,11 +255,15 @@ function extendMap() {
       const r = Math.random();
       const type = r < bunkerChance ? 'bunker' : r < bunkerChance + metalChance ? 'metal' : 'normal';
       const isBunker = type === 'bunker';
-      houses.push({ x:hx, y:groundY-(isBunker?180:120), w:isBunker?180:110,
-                    type,
-                    flying:false, flyTimer: 40 + Math.floor(Math.random() * 160),
-                    flyDelay: 40 + Math.floor(Math.random() * 160),
-                    vy:0, vx:0, angle:0, alpha:1 });
+      const count = isBunker ? 2 + Math.floor(Math.random() * 2) : 1; // 2–3 fortresses in a cluster
+      for (let ci = 0; ci < count; ci++) {
+        const bx = hx + ci * (180 + 4); // pack them right next to each other
+        houses.push({ x:bx, y:groundY-(isBunker?180:120), w:isBunker?180:110,
+                      type,
+                      flying:false, flyTimer: 40 + Math.floor(Math.random() * 160),
+                      flyDelay: 40 + Math.floor(Math.random() * 160),
+                      vy:0, vx:0, angle:0, alpha:1 });
+      }
     }
 
     genFrontier = chunkX + chunkW;
@@ -428,7 +432,11 @@ function handleEnterExit() {
     player.inHouse = null;
   } else {
     for (const h of houses) {
-      if (nearHouse(h)) { player.inHouse = h; break; }
+      if (nearHouse(h)) {
+        player.inHouse = h;
+        if (h.type === 'bunker') challenge = null; // cancel any active challenge
+        break;
+      }
     }
   }
 }
@@ -2002,6 +2010,7 @@ const CHAL_LABELS = { KeyW:'W', KeyA:'A', KeyS:'S', KeyD:'D' };
 function spawnChallenge() {
   const wi = windInfo();
   if (wi.lvl < 3) return;
+  if (player.inHouse && player.inHouse.type === 'bunker') return;
   const count = Math.min(5, wi.lvl); // 3 keys at gale, 5 at gale+
   const seq = [];
   for (let i = 0; i < count; i++)
