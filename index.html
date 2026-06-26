@@ -249,9 +249,14 @@ function extendMap() {
     // Maybe place a house on this chunk — metal bunker chance rises 20% per tier
     if (chunkW > 120 && Math.random() < 0.50) {
       const hx    = chunkX + 18 + Math.random() * Math.max(0, chunkW - 120);
-      const metalChance = Math.min(1, 0.10 + getWindTier() * 0.20);
-      houses.push({ x:hx, y:groundY-120, w:110,
-                    type: Math.random() < metalChance ? 'metal' : 'normal',
+      const tier  = getWindTier();
+      const bunkerChance = tier >= 6 ? 0.90 : 0.01;
+      const metalChance  = Math.min(1, 0.10 + tier * 0.20);
+      const r = Math.random();
+      const type = r < bunkerChance ? 'bunker' : r < bunkerChance + metalChance ? 'metal' : 'normal';
+      const isBunker = type === 'bunker';
+      houses.push({ x:hx, y:groundY-(isBunker?180:120), w:isBunker?180:110,
+                    type,
                     flying:false, flyTimer: 40 + Math.floor(Math.random() * 160),
                     flyDelay: 40 + Math.floor(Math.random() * 160),
                     vy:0, vx:0, angle:0, alpha:1 });
@@ -412,8 +417,10 @@ function updatePlayer() {
 function nearHouse(h) {
   if (h.flying || h.alpha < 0.5) return false;
   const hCx = h.x + h.w / 2, pCx = player.x + player.w / 2;
-  const hBottom = h.y + 120, pBottom = player.y + player.h;
-  return Math.abs(pCx - hCx) < 68 && pBottom < hBottom + 38 && pBottom > hBottom - 55;
+  const hH = h.type === 'bunker' ? 180 : 120;
+  const hBottom = h.y + hH, pBottom = player.y + player.h;
+  const reach = h.type === 'bunker' ? 100 : 68;
+  return Math.abs(pCx - hCx) < reach && pBottom < hBottom + 38 && pBottom > hBottom - 70;
 }
 
 function handleEnterExit() {
@@ -440,13 +447,13 @@ function updateHouses() {
       h.y  += h.vy;
       h.angle += h.vx * 0.015;
       if (h.y - cam.y < -80) h.alpha -= 0.025;
-    } else if ((isStorm && h.type !== 'metal') || (isHypercane && h.type === 'metal')) {
+    } else if ((isStorm && h.type !== 'metal' && h.type !== 'bunker') || (isHypercane && h.type === 'metal')) {
       h.flyTimer--;
       if (h.flyTimer <= 0) {
         h.flying = true;
         if (player.inHouse === h) player.inHouse = null; // eject player
       }
-    } else if (!isStorm || (h.type === 'metal' && !isHypercane)) {
+    } else if (!isStorm || (h.type !== 'normal' && !isHypercane) || h.type === 'bunker') {
       h.flyTimer = h.flyDelay; // reset if storm passes (or immune)
     }
   }
@@ -514,7 +521,7 @@ function updateTornado() {
 
   // Proximity kill — hypercane kills through metal bunkers too
   const killRadius = 58 * tScale;
-  const sheltered  = player.inHouse && !isHypercane; // metal offers no protection in hypercane
+  const sheltered  = player.inHouse && (player.inHouse.type === 'bunker' || !isHypercane);
   if (tornado.alpha > 0.75 && !sheltered) {
     const dist = Math.abs((player.x + player.w / 2) - tornado.x);
     if (dist < killRadius) {
@@ -1178,15 +1185,18 @@ function drawStickman() {
 
 // ── Draw: Houses ─────────────────────────────────────────
 function drawHouse(h) {
+  const isBunker = h.type === 'bunker';
   const cx = h.x - cam.x + h.w / 2;
-  const cy = h.y - cam.y + 84;   // visual center: RH(48) + BH/2(36) = 84
-  if (cx < -160 || cx > W + 160 || cy < -160 || cy > H + 160) return;
+  const cy = h.y - cam.y + (isBunker ? 120 : 84);
+  if (cx < -200 || cx > W + 200 || cy < -200 || cy > H + 200) return;
 
-  const RH = 48, BH = 72, hw = h.w / 2; // roof height, body height, half-width=55
+  const RH = isBunker ? 28 : 48;
+  const BH = isBunker ? 110 : 72;
+  const hw = h.w / 2;
 
   const isStorm = wind.force < -0.68;
-  // Metal bunkers never shake — they're bolted to the rock
-  const shaking = isStorm && !h.flying && h.flyTimer < 60 && h.type !== 'metal';
+  // Bunkers and metal bunkers never shake
+  const shaking = isStorm && !h.flying && h.flyTimer < 60 && h.type === 'normal';
   const shakeX  = shaking ? Math.sin(frame * 0.8) * 4 : 0;
 
   ctx.save();
@@ -1197,7 +1207,113 @@ function drawHouse(h) {
   const warm    = player.inHouse === h;
   const isMetal = h.type === 'metal';
 
-  if (isMetal) {
+  if (isBunker) {
+    // ── Fortress Bunker ───────────────────────────────
+    // Warm glow when occupied
+    if (warm) {
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 2.2);
+      grd.addColorStop(0, 'rgba(255,180,60,0.22)');
+      grd.addColorStop(1, 'rgba(255,180,60,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(-hw * 2.2, -RH - BH, hw * 4.4, RH + BH * 2);
+    }
+
+    // Sandbag base
+    ctx.fillStyle = '#5a4a2a';
+    ctx.fillRect(-hw - 6, BH/2 - 14, h.w + 12, 16);
+    for (let sb = 0; sb < Math.floor(h.w / 18) + 1; sb++) {
+      ctx.fillStyle = sb % 2 === 0 ? '#6a5a34' : '#504228';
+      ctx.beginPath();
+      ctx.ellipse(-hw + sb * 18 + 9 - 6, BH/2 - 8, 10, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Massive concrete walls
+    const wallGrd = ctx.createLinearGradient(-hw, -BH/2, hw, -BH/2);
+    wallGrd.addColorStop(0,   '#3a3830');
+    wallGrd.addColorStop(0.5, '#4a4840');
+    wallGrd.addColorStop(1,   '#2e2c26');
+    ctx.fillStyle = wallGrd;
+    ctx.fillRect(-hw, -BH/2, h.w, BH);
+
+    // Horizontal concrete seams
+    ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 1.5;
+    for (let sl = 1; sl < 5; sl++) {
+      const sy2 = -BH/2 + sl * (BH / 5);
+      ctx.beginPath(); ctx.moveTo(-hw, sy2); ctx.lineTo(hw, sy2); ctx.stroke();
+    }
+    // Vertical seams
+    for (let vl = 1; vl < 4; vl++) {
+      const vx2 = -hw + vl * (h.w / 4);
+      ctx.beginPath(); ctx.moveTo(vx2, -BH/2); ctx.lineTo(vx2, BH/2 - 14); ctx.stroke();
+    }
+
+    // Left blast wall
+    ctx.fillStyle = '#2e2c26';
+    ctx.fillRect(-hw - 14, -BH/2 + 10, 14, BH - 24);
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillRect(-hw - 14, -BH/2 + 10, 4, BH - 24);
+
+    // Right blast wall
+    ctx.fillStyle = '#2e2c26';
+    ctx.fillRect(hw, -BH/2 + 10, 14, BH - 24);
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(hw + 8, -BH/2 + 10, 6, BH - 24);
+
+    // Flat armoured roof
+    ctx.fillStyle = '#1e1c18';
+    ctx.fillRect(-hw - 4, -BH/2 - RH, h.w + 8, RH + 4);
+    // Roof edge ridge
+    ctx.strokeStyle = '#5a5848'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-hw - 4, -BH/2); ctx.lineTo(hw + 4, -BH/2); ctx.stroke();
+    // Snow on roof
+    ctx.fillStyle = 'rgba(210,235,252,0.60)';
+    ctx.fillRect(-hw - 4, -BH/2 - RH, h.w + 8, 6);
+    // Rooftop antenna
+    ctx.strokeStyle = '#6a6860'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-hw * 0.5, -BH/2 - RH); ctx.lineTo(-hw * 0.5, -BH/2 - RH - 22); ctx.stroke();
+    ctx.fillStyle = '#e84040'; ctx.beginPath(); ctx.arc(-hw * 0.5, -BH/2 - RH - 24, 3, 0, Math.PI * 2); ctx.fill();
+    // Vent pipes
+    for (const vp of [hw * 0.2, hw * 0.55]) {
+      ctx.fillStyle = '#3a3830';
+      ctx.fillRect(vp - 5, -BH/2 - RH - 8, 10, 12);
+      ctx.fillStyle = '#1e1c18';
+      ctx.fillRect(vp - 7, -BH/2 - RH - 12, 14, 6);
+    }
+
+    // Vault door (center, massive)
+    const dw = 36, dh = 58;
+    ctx.fillStyle = '#1a1814';
+    ctx.fillRect(-dw/2, BH/2 - dh - 14, dw, dh);
+    ctx.strokeStyle = '#5a5040'; ctx.lineWidth = 3;
+    ctx.strokeRect(-dw/2, BH/2 - dh - 14, dw, dh);
+    // Door bolts
+    ctx.fillStyle = '#706858';
+    for (const bx2 of [-dw/2 + 5, dw/2 - 5]) {
+      for (const by3 of [BH/2 - dh - 8, BH/2 - dh/2 - 14, BH/2 - 22]) {
+        ctx.beginPath(); ctx.arc(bx2, by3, 3.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // Wheel lock
+    ctx.strokeStyle = '#908878'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, BH/2 - dh/2 - 14, 8, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, BH/2 - dh/2 - 14); ctx.lineTo(8, BH/2 - dh/2 - 14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, BH/2 - dh/2 - 22); ctx.lineTo(0, BH/2 - dh/2 - 6); ctx.stroke();
+
+    // Tiny arrow-slit windows
+    ctx.fillStyle = warm ? '#ffcc44' : '#080806';
+    for (const wx2 of [-hw + 16, -hw + 44, hw - 44, hw - 16]) {
+      ctx.fillRect(wx2 - 3, -BH/2 + 20, 6, 14);
+      ctx.strokeStyle = '#5a5040'; ctx.lineWidth = 1;
+      ctx.strokeRect(wx2 - 3, -BH/2 + 20, 6, 14);
+    }
+    if (warm) {
+      const wg = ctx.createRadialGradient(0, -BH/2 + 27, 0, 0, -BH/2 + 27, 55);
+      wg.addColorStop(0, 'rgba(255,200,60,0.22)'); wg.addColorStop(1, 'rgba(255,200,60,0)');
+      ctx.fillStyle = wg; ctx.fillRect(-hw, -BH/2, h.w, BH);
+    }
+
+  } else if (isMetal) {
     // ── Metal bunker ──────────────────────────────────
     // Subtle cold glow when occupied
     if (warm) {
@@ -1366,14 +1482,14 @@ function drawHouse(h) {
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.60)';
       rrect(promptX - 42, promptY - 15, 84, 19, 4); ctx.fill();
-      ctx.fillStyle = isMetal ? '#8ac8e8' : '#c8e4f5';
+      ctx.fillStyle = isBunker ? '#ffd700' : isMetal ? '#8ac8e8' : '#c8e4f5';
       ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
       ctx.fillText('[ E ]  EXIT', promptX, promptY); ctx.restore();
     } else if (!player.inHouse && nearHouse(h)) {
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.60)';
-      const label = isMetal ? '[ E ]  BUNKER' : '[ E ]  SHELTER';
-      const pColor = isMetal ? '#8ac8e8' : '#e8c84a';
+      const label = isBunker ? '[ E ]  FORTRESS' : isMetal ? '[ E ]  BUNKER' : '[ E ]  SHELTER';
+      const pColor = isBunker ? '#ffd700' : isMetal ? '#8ac8e8' : '#e8c84a';
       rrect(promptX - 52, promptY - 15, 104, 19, 4); ctx.fill();
       ctx.fillStyle = pColor; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
       ctx.fillText(label, promptX, promptY); ctx.restore();
@@ -1903,6 +2019,10 @@ function handleChallengeKey(code) {
       challenge.result = 'win';
       challenge.cooldown = 80;
       freezing = Math.max(0, freezing - 0.20);
+      // Calm winds for 10 seconds as reward
+      wind.force = 0; wind.target = 0;
+      wind.timer = 0; wind.duration = 600;
+      if (tornado) tornado.alpha = 0;
     }
   } else {
     challenge.result = 'fail';
