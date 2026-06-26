@@ -1223,7 +1223,7 @@ function drawStickman() {
   }
 
   // Scarf — blows in world wind direction, anchored at neck
-  const scarfLocal = wind.force * 40 * f;
+  const scarfLocal = wind.force * 16 * f;
   ctx.strokeStyle = '#cc2020'; ctx.lineWidth = 3.5;
   ctx.beginPath(); ctx.moveTo(-2, NY);
   ctx.quadraticCurveTo(scarfLocal * 0.5, NY + 3, scarfLocal, NY + 9);
@@ -2058,17 +2058,21 @@ function draw() {
 // ── Audio System ──────────────────────────────────────────
 const WindAudio = (() => {
   let ac = null;
-  let master, windGain, windBP, droneGain, wailGain, torGain, iceGain;
+  let master, windGain, windLP, gustGain, rumbleGain, droneGain, torGain, iceGain;
   let started = false, prevLightning = false;
 
-  function mkNoise() {
-    const n = ac.sampleRate * 3;
+  // Pink-ish noise (gentler than brown)
+  function mkNoise(color = 0.995) {
+    const n = ac.sampleRate * 4;
     const buf = ac.createBuffer(1, n, ac.sampleRate);
     const d = buf.getChannelData(0);
-    let b = 0;
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0;
     for (let i = 0; i < n; i++) {
-      b = b * 0.997 + (Math.random() - 0.5) * 0.06;
-      d[i] = Math.max(-1, Math.min(1, b * 18));
+      const w = Math.random() * 2 - 1;
+      b0=color*b0+w*0.0555179; b1=color*b1+w*0.0750759;
+      b2=color*b2+w*0.1538520; b3=color*b3+w*0.3104856;
+      b4=color*b4+w*0.5329522; b5=color*b5+w*0.0168980;
+      d[i] = Math.max(-1, Math.min(1, (b0+b1+b2+b3+b4+b5+w*0.115926) * 0.11));
     }
     const s = ac.createBufferSource(); s.buffer = buf; s.loop = true; return s;
   }
@@ -2076,94 +2080,105 @@ const WindAudio = (() => {
   function mkOsc(type, freq) {
     const o = ac.createOscillator(); o.type = type; o.frequency.value = freq; o.start(); return o;
   }
-
   function mkLFO(freq) { return mkOsc('sine', freq); }
 
   function init() {
     if (started) return;
     started = true;
     ac = new (window.AudioContext || window.webkitAudioContext)();
-    ac.resume(); // browsers suspend context even on user gesture — must explicitly resume
-    master = ac.createGain(); master.gain.value = 1.0; master.connect(ac.destination);
+    ac.resume();
+    master = ac.createGain(); master.gain.value = 0.85; master.connect(ac.destination);
 
-    // ── Wind: brown noise → bandpass → lowpass ──
-    const wSrc = mkNoise();
-    windBP = ac.createBiquadFilter(); windBP.type = 'bandpass'; windBP.Q.value = 0.65; windBP.frequency.value = 280;
-    const wLP = ac.createBiquadFilter(); wLP.type = 'lowpass'; wLP.frequency.value = 1900;
-    windGain = ac.createGain(); windGain.gain.value = 0.30;
-    // Howling LFO modulates filter cutoff for a moaning quality
-    const howlMod = ac.createGain(); howlMod.gain.value = 190;
-    mkLFO(0.22).connect(howlMod); howlMod.connect(windBP.frequency);
-    wSrc.connect(windBP); windBP.connect(wLP); wLP.connect(windGain); windGain.connect(master); wSrc.start();
+    // ── Layer 1: main wind rush — pink noise → smooth lowpass ──
+    // No aggressive filter modulation; cutoff just rises with wind strength
+    const w1 = mkNoise();
+    windLP = ac.createBiquadFilter(); windLP.type = 'lowpass'; windLP.Q.value = 0.4;
+    windLP.frequency.value = 600;
+    const wHP = ac.createBiquadFilter(); wHP.type = 'highpass'; wHP.frequency.value = 80;
+    windGain = ac.createGain(); windGain.gain.value = 0.0;
+    w1.connect(windLP); windLP.connect(wHP); wHP.connect(windGain);
+    windGain.connect(master); w1.start();
 
-    // ── Scary drone: three detuned oscillators, tremolo ──
-    const d1 = mkOsc('sawtooth', 55),    // A1 — ominous bass
-          d2 = mkOsc('sine',     58.27), // ~Bb1 — dissonant beating against A1
-          d3 = mkOsc('triangle', 82.41); // E2 — adds low-end darkness
-    const dMix = ac.createGain(); dMix.gain.value = 0.28;
-    const dFilt = ac.createBiquadFilter(); dFilt.type = 'lowpass'; dFilt.frequency.value = 480; dFilt.Q.value = 2.2;
-    const tremBase = ac.createGain(); tremBase.gain.value = 0.55;
-    const tremMod  = ac.createGain(); tremMod.gain.value  = 0.43;
-    mkLFO(0.11).connect(tremMod); tremMod.connect(tremBase.gain);
-    droneGain = ac.createGain(); droneGain.gain.value = 0;
-    d1.connect(dMix); d2.connect(dMix); d3.connect(dMix);
-    dMix.connect(dFilt); dFilt.connect(tremBase); tremBase.connect(droneGain); droneGain.connect(master);
+    // ── Layer 2: slow gusting — second noise source with very slow LFO on gain ──
+    // Creates gentle "gust" swells without wobbly filter artifacts
+    const w2 = mkNoise(0.990);
+    const gLP = ac.createBiquadFilter(); gLP.type = 'lowpass'; gLP.frequency.value = 320; gLP.Q.value = 0.3;
+    gustGain = ac.createGain(); gustGain.gain.value = 0.0;
+    const gustLFO = ac.createGain(); gustLFO.gain.value = 0.10;
+    mkLFO(0.055).connect(gustLFO); gustLFO.connect(gustGain.gain);
+    w2.connect(gLP); gLP.connect(gustGain); gustGain.connect(master); w2.start();
 
-    // ── Wail: eerie high-pitched sweep, vibrato ──
-    const wailOsc = mkOsc('sine', 660);
-    const wMod = ac.createGain(); wMod.gain.value = 140; mkLFO(0.07).connect(wMod); wMod.connect(wailOsc.frequency);
-    const vMod = ac.createGain(); vMod.gain.value = 9;   mkLFO(5.6).connect(vMod);  vMod.connect(wailOsc.frequency);
-    const wFilt = ac.createBiquadFilter(); wFilt.type = 'bandpass'; wFilt.frequency.value = 880; wFilt.Q.value = 3.8;
-    wailGain = ac.createGain(); wailGain.gain.value = 0;
-    wailOsc.connect(wFilt); wFilt.connect(wailGain); wailGain.connect(master);
+    // ── Layer 3: deep low rumble — very low noise for "air pressure" feeling ──
+    const w3 = mkNoise(0.999);
+    const rLP = ac.createBiquadFilter(); rLP.type = 'lowpass'; rLP.frequency.value = 55; rLP.Q.value = 0.5;
+    rumbleGain = ac.createGain(); rumbleGain.gain.value = 0.0;
+    w3.connect(rLP); rLP.connect(rumbleGain); rumbleGain.connect(master); w3.start();
 
-    // ── Tornado rumble: noise + fast LFO ──
-    const tSrc = mkNoise();
-    const tFilt = ac.createBiquadFilter(); tFilt.type = 'bandpass'; tFilt.frequency.value = 630; tFilt.Q.value = 1.9;
-    const tMod = ac.createGain(); tMod.gain.value = 420; mkLFO(4.8).connect(tMod); tMod.connect(tFilt.frequency);
-    torGain = ac.createGain(); torGain.gain.value = 0;
-    tSrc.connect(tFilt); tFilt.connect(torGain); torGain.connect(master); tSrc.start();
+    // ── Layer 4: storm drone — two detuned sub-bass sines, very subtle ──
+    const d1 = mkOsc('sine', 48), d2 = mkOsc('sine', 51.5);
+    const dMix = ac.createGain(); dMix.gain.value = 0.18;
+    const dLP = ac.createBiquadFilter(); dLP.type = 'lowpass'; dLP.frequency.value = 220; dLP.Q.value = 1.0;
+    droneGain = ac.createGain(); droneGain.gain.value = 0.0;
+    d1.connect(dMix); d2.connect(dMix);
+    dMix.connect(dLP); dLP.connect(droneGain); droneGain.connect(master);
 
-    // ── Ice shimmer: two detuned high sines, fast tremolo ──
-    const i1 = mkOsc('sine', 1047), i2 = mkOsc('sine', 1112); // C6 + C#6
-    const iMod = ac.createGain(); iMod.gain.value = 28; mkLFO(7.2).connect(iMod); iMod.connect(i1.frequency);
-    const iMix = ac.createGain(); iMix.gain.value = 0.32;
-    iceGain = ac.createGain(); iceGain.gain.value = 0;
-    i1.connect(iMix); i2.connect(iMix); iMix.connect(iceGain); iceGain.connect(master);
+    // ── Layer 5: tornado — roaring noise band that swells ──
+    const t1 = mkNoise(0.992);
+    const tLP = ac.createBiquadFilter(); tLP.type = 'lowpass'; tLP.frequency.value = 900; tLP.Q.value = 0.6;
+    const tHP = ac.createBiquadFilter(); tHP.type = 'highpass'; tHP.frequency.value = 140;
+    // Gentle rotational swell — slow and deep, not radio-like
+    const tLFO = ac.createGain(); tLFO.gain.value = 0.12;
+    mkLFO(0.38).connect(tLFO); tLFO.connect(tLP.frequency);
+    torGain = ac.createGain(); torGain.gain.value = 0.0;
+    t1.connect(tLP); tLP.connect(tHP); tHP.connect(torGain); torGain.connect(master); t1.start();
+
+    // ── Layer 6: freeze shimmer — very soft high-frequency whisper ──
+    const i1 = mkOsc('sine', 1800), i2 = mkOsc('sine', 2100);
+    const iMix = ac.createGain(); iMix.gain.value = 0.08;
+    const iLP = ac.createBiquadFilter(); iLP.type = 'lowpass'; iLP.frequency.value = 3000;
+    iceGain = ac.createGain(); iceGain.gain.value = 0.0;
+    i1.connect(iMix); i2.connect(iMix); iMix.connect(iLP); iLP.connect(iceGain); iceGain.connect(master);
   }
 
   function thunder() {
     if (!ac) return;
     const t = ac.currentTime;
-    const buf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+    const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++)
-      d[i] = (Math.random() * 2 - 1) * Math.pow(Math.max(0, 1 - i / d.length), 1.4);
-    const s = ac.createBufferSource(); s.buffer = buf;
-    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 160;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0.85, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
-    s.connect(f); f.connect(g); g.connect(master); s.start();
+      d[i] = (Math.random() * 2 - 1) * Math.pow(Math.max(0, 1 - i / d.length), 1.2);
+    const s  = ac.createBufferSource(); s.buffer = buf;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 140;
+    const g  = ac.createGain();
+    g.gain.setValueAtTime(1.0, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
+    s.connect(lp); lp.connect(g); g.connect(master); s.start();
   }
 
   function update(wStr, wForce, torAlpha, freeze, lightning) {
     if (!ac) return;
     if (ac.state === 'suspended') ac.resume();
-    const t = ac.currentTime, sm = 0.12;
-    // Wind: loud base + scaling with strength so it's always audible
-    windGain.gain.setTargetAtTime(0.28 + Math.min(0.55, wStr * 0.70), t, sm);
-    windBP.frequency.setTargetAtTime(
-      Math.max(120, wForce < 0 ? 200 + wStr * 780 : 170 + wForce * 300), t, sm);
-    // Drone: audible from calm onwards, dramatic in storm
-    droneGain.gain.setTargetAtTime(0.08 + Math.max(0, wStr - 0.10) * 0.45, t, sm);
-    // Wail: headwind only, louder threshold
-    wailGain.gain.setTargetAtTime(
-      wForce < -0.20 ? Math.min(0.38, (-wForce - 0.20) * 0.55) : 0, t, sm);
-    // Tornado
-    torGain.gain.setTargetAtTime(torAlpha * 0.60, t, 0.06);
-    // Ice shimmer
-    iceGain.gain.setTargetAtTime(Math.max(0, freeze - 0.30) * 0.35, t, sm);
+    const t = ac.currentTime, sm = 0.18;
+
+    // Main rush: louder and brighter as wind strengthens
+    windGain.gain.setTargetAtTime(Math.min(0.72, wStr * 0.80), t, sm);
+    windLP.frequency.setTargetAtTime(300 + wStr * 1400, t, sm);
+
+    // Gust swell: appears in moderate+ wind
+    gustGain.gain.setTargetAtTime(Math.max(0, wStr - 0.15) * 0.22, t, sm);
+
+    // Low rumble: grows in storms
+    rumbleGain.gain.setTargetAtTime(Math.max(0, wStr - 0.40) * 0.55, t, sm);
+
+    // Sub-bass drone: only in heavy wind
+    droneGain.gain.setTargetAtTime(Math.max(0, wStr - 0.55) * 0.40, t, sm);
+
+    // Tornado roar
+    torGain.gain.setTargetAtTime(torAlpha * 0.75, t, 0.08);
+
+    // Freeze whisper
+    iceGain.gain.setTargetAtTime(Math.max(0, freeze - 0.35) * 0.28, t, sm);
+
     if (lightning && !prevLightning) thunder();
     prevLightning = lightning;
   }
