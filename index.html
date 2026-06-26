@@ -267,7 +267,10 @@ function extendMap() {
       const count = isBunker ? 2 + Math.floor(Math.random() * 2) : 1; // 2–3 fortresses in a cluster
       for (let ci = 0; ci < count; ci++) {
         const bx = hx + ci * (180 + 4); // pack them right next to each other
-        houses.push({ x:bx, y:groundY-(isBunker?180:120), w:isBunker?180:110,
+        const hw2 = isBunker ? 90 : 55;
+        const hGroundY = baseGroundY(bx + hw2); // ground exactly under this house
+        const hYOffset = isBunker ? 175 : 120;  // body-bottom offset from h.y
+        houses.push({ x:bx, y:hGroundY - hYOffset, w:isBunker?180:110,
                       type,
                       flying:false, flyTimer: 40 + Math.floor(Math.random() * 160),
                       flyDelay: 40 + Math.floor(Math.random() * 160),
@@ -351,7 +354,8 @@ function updatePlayer() {
     } else {
       player.vx = 0; player.vy = 0;
       player.x = player.inHouse.x + player.inHouse.w / 2 - player.w / 2;
-      player.y = player.inHouse.y + 120 - player.h;
+      const hFloor = player.inHouse.type === 'bunker' ? player.inHouse.y + 175 : player.inHouse.y + 120;
+      player.y = hFloor - player.h;
       player.onGround = true;
       cam.x += (player.x - W * 0.35 - cam.x) * 0.11;
       if (cam.x < 0) cam.x = 0;
