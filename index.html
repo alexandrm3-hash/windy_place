@@ -137,7 +137,7 @@ const WIND_STATES = [
   { tgt: -0.90, label:'STORM',           lvl:4, dMin: 55, dMax: 95 },  // [4]
   { tgt:  0.28, label:'TAILWIND',        lvl:1, dMin:100, dMax:180 },  // [5]
   { tgt: -1.40, label:'TORNADO',         lvl:5, dMin: 70, dMax:110 },  // [6]
-  { tgt: -2.00, label:'HYPERCANE',       lvl:6, dMin: 55, dMax: 85 },  // [7]
+  { tgt: -2.00, label:'HYPERCANE',       lvl:6, dMin:220, dMax:380 },  // [7]
 ];
 
 function getWindTier() {
@@ -324,6 +324,8 @@ function updateWind() {
 
 // ── Player update ─────────────────────────────────────────
 function updatePlayer() {
+  const chalActive = challenge && challenge.result === null;
+
   // When sheltered: hold position in the house, skip all physics
   if (player.inHouse) {
     if (player.inHouse.flying || player.inHouse.alpha < 0.5) {
@@ -341,7 +343,7 @@ function updatePlayer() {
     }
   }
   // Sprint — Left Shift drains stamina; 2-second cooldown before regen
-  const sprinting = keys['ShiftLeft'] && !staminaDepleted && stamina > 0 && player.onGround;
+  const sprinting = !chalActive && keys['ShiftLeft'] && !staminaDepleted && stamina > 0 && player.onGround;
   player.sprinting = sprinting;
   if (sprinting) {
     stamina = Math.max(0, stamina - 0.0038);          // ~4.4 s to fully drain
@@ -355,16 +357,17 @@ function updatePlayer() {
   }
   const sm = sprinting ? 1.65 : 1;                     // speed multiplier
 
-  if (goLeft())  { player.vx -= 0.90 * sm; player.facing = -1; }
-  if (goRight()) { player.vx += 0.90 * sm; player.facing =  1; }
-  if (!goLeft() && !goRight()) player.vx *= 0.76;
+  if (!chalActive && goLeft())  { player.vx -= 0.90 * sm; player.facing = -1; }
+  if (!chalActive && goRight()) { player.vx += 0.90 * sm; player.facing =  1; }
+  if (chalActive || (!goLeft() && !goRight())) player.vx *= 0.76;
 
-  player.vx += wind.force * (player.onGround ? 0.75 : 1.5);
+  if (!chalActive) player.vx += wind.force * (player.onGround ? 0.75 : 1.5);
   player.vx  = Math.max(-5.5 * sm, Math.min(5.5 * sm, player.vx));
 
-  if (doJump() && player.onGround) { player.vy = -12.5; player.onGround = false; }
+  if (!chalActive && doJump() && player.onGround) { player.vy = -12.5; player.onGround = false; }
 
-  player.vy = Math.min(player.vy + 0.50, 14);
+  if (chalActive) { player.vx = 0; player.vy = 0; }
+  player.vy = Math.min(player.vy + (chalActive ? 0 : 0.50), 14);
   player.x += player.vx;
   player.y += player.vy;
 
@@ -529,6 +532,7 @@ function updateTornado() {
 // Rate scales with wind strength — calm is nearly safe, storm is lethal over time.
 // Being inside a house warms the player.
 function updateFreezing() {
+  if (challenge && challenge.result === null) return;
   if (player.inHouse) {
     const warmRate = player.inHouse.type === 'metal' ? 0.0010 : 0.0045;
     freezing = Math.max(0, freezing - warmRate);
@@ -1876,8 +1880,8 @@ const WindAudio = (() => {
 
 // ── Wind Challenge minigame ───────────────────────────────
 let challenge = null;
-const CHAL_POOL   = ['KeyQ','KeyT','KeyF','KeyG','KeyH','KeyZ','KeyX','KeyC'];
-const CHAL_LABELS = { KeyQ:'Q', KeyT:'T', KeyF:'F', KeyG:'G', KeyH:'H', KeyZ:'Z', KeyX:'X', KeyC:'C' };
+const CHAL_POOL   = ['KeyW','KeyA','KeyS','KeyD'];
+const CHAL_LABELS = { KeyW:'W', KeyA:'A', KeyS:'S', KeyD:'D' };
 
 function spawnChallenge() {
   const wi = windInfo();
@@ -1886,7 +1890,7 @@ function spawnChallenge() {
   const seq = [];
   for (let i = 0; i < count; i++)
     seq.push(CHAL_POOL[Math.floor(Math.random() * CHAL_POOL.length)]);
-  const maxTimer = Math.max(100, 280 - wi.lvl * 30); // harder at higher tiers
+  const maxTimer = Math.max(180, 480 - wi.lvl * 30); // harder at higher tiers
   challenge = { seq, idx: 0, timer: maxTimer, maxTimer, result: null, cooldown: 0 };
 }
 
@@ -1966,24 +1970,29 @@ function drawChallenge() {
     const done   = i < challenge.idx;
     const active = i === challenge.idx && !isWin && !isFail;
 
+    const bx = active ? kx - 22 : kx - 15;
+    const bw = active ? 44 : 30;
+    const bh = active ? 44 : 28;
+    const by2 = active ? cy - 16 : cy - 8;
+
     ctx.fillStyle = done   ? 'rgba(107,203,119,0.25)'
-                  : active ? 'rgba(200,228,245,0.14)'
+                  : active ? 'rgba(200,228,245,0.18)'
                   :          'rgba(255,255,255,0.04)';
-    rrect(kx - 15, cy - 8, 30, 28, 5);
+    rrect(bx, by2, bw, bh, 6);
     ctx.fill();
     ctx.strokeStyle = done   ? '#6bcb77'
                     : active ? '#ffffff'
                     :          'rgba(180,215,240,0.22)';
-    ctx.lineWidth = active ? 1.8 : 1.2;
-    rrect(kx - 15, cy - 8, 30, 28, 5);
+    ctx.lineWidth = active ? 2.5 : 1.2;
+    rrect(bx, by2, bw, bh, 6);
     ctx.stroke();
 
-    ctx.font = `bold ${active ? 15 : 12}px Courier New`;
+    ctx.font = `bold ${active ? 26 : 12}px Courier New`;
     ctx.textAlign = 'center';
     ctx.fillStyle = done   ? '#6bcb77'
                   : active ? '#ffffff'
                   :          'rgba(180,215,240,0.38)';
-    ctx.fillText(CHAL_LABELS[challenge.seq[i]], kx, cy + 13);
+    ctx.fillText(CHAL_LABELS[challenge.seq[i]], kx, active ? cy + 13 : cy + 13);
   }
 
   ctx.restore();
@@ -2019,6 +2028,13 @@ function applyScale() {
 window.addEventListener('resize', applyScale);
 applyScale();
 
-function loop() { update(); draw(); requestAnimationFrame(loop); }
+let _slowFrame = 0;
+function loop() {
+  // Slow-motion during active challenge: run physics every 8th render frame (~7fps)
+  const slo = challenge && challenge.result === null;
+  if (!slo || (++_slowFrame % 8 === 0)) update();
+  draw();
+  requestAnimationFrame(loop);
+}
 init(); loop();
 </script>
