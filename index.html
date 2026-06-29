@@ -87,7 +87,7 @@
 #test-menu button:last-child { border-bottom: none; }
 #test-menu button:hover { background: rgba(255,255,255,0.08); }
 #test-menu button.hyper { color: #cc44ff; }
-#test-menu button.void  { color: #ffffff; text-shadow: 0 0 8px #aa00ff; }
+#test-menu button.void  { color: #ff4400; text-shadow: 0 0 8px #ff2200; }
 </style>
 
 <div id="test-btn" onclick="toggleTestMenu()">⚡ WIND</div>
@@ -116,11 +116,11 @@ const C = {
   skyTop:    [8,  14, 28],
   skyStorm:  [5,   8, 16],
   skyTail:   [12, 22, 42],
-  skyVoid:   [4,   2, 10],   // near-black deep purple — void storm sky top
+  skyVoid:   [22,  0,  0],   // near-black blood red — void storm sky top
   horizCalm: [45, 82,118],
   horizStorm:[18, 30, 44],
   horizTail: [55, 98,140],
-  horizVoid: [22,  8, 38],   // dark crimson-purple horizon under void storm
+  horizVoid: [85,  4,  0],   // dark blood-orange horizon under void storm
 
   mtFar:  'rgba(100,138,172,0.27)',
   mtMid:  'rgba(58,90,130,0.52)',
@@ -146,7 +146,7 @@ const WIND_STATES = [
   { tgt: -2.00, label:'HYPERCANE',        lvl:6, dMin:220, dMax:380 },  // [7]
   { tgt:  0.65, label:'STRONG TAILWIND',  lvl:3, dMin: 80, dMax:150 },  // [8]
   { tgt:  1.40, label:'TAILWIND TORNADO', lvl:5, dMin: 70, dMax:110 },  // [9]
-  { tgt: -3.20, label:'VOID STORM',       lvl:7, dMin:300, dMax:520 },  // [10] — secret tier 7
+  { tgt: -6.00, label:'VOID STORM',       lvl:7, dMin:300, dMax:520 },  // [10] — secret tier 7
 ];
 
 function getWindTier() {
@@ -512,7 +512,7 @@ function updateHouses() {
   const isTornado   = wind.force < -1.00 || wind.force > 1.00;
   const isHypercane = wind.force < -1.80;
   const isVoidStorm = wind.force < -2.60; // VOID STORM — fortress bunkers also torn apart
-  const liftMult    = isVoidStorm ? 5.5 : isHypercane ? 2.8 : isTornado ? 1.6 : 1.0;
+  const liftMult    = isVoidStorm ? 14.0 : isHypercane ? 2.8 : isTornado ? 1.6 : 1.0;
   for (const h of houses) {
     if (h.flying) {
       h.vy  = Math.max(-28, h.vy  - 0.30 * liftMult);
@@ -540,7 +540,7 @@ function updateTornado() {
   const isTornado   = wind.force < -1.00 || wind.force > 1.00;
   const isHypercane = wind.force < -1.80;
   const isVoidStorm = wind.force < -2.60;
-  const torScale    = isVoidStorm ? 3.50 : isHypercane ? 1.85 : 1.0;
+  const torScale    = isVoidStorm ? 8.00 : isHypercane ? 1.85 : 1.0;
 
   if (isTornado && !tornado) {
     const side = wind.force > 0 ? -1 : 1;
@@ -550,13 +550,13 @@ function updateTornado() {
     if (isHypercane) debrisTypes.push('car','truck','rock','rock','roof','tree','barrel','plank');
     if (isVoidStorm) debrisTypes.push('car','truck','car','truck','rock','rock','roof','roof','tree','barrel','plank','rock');
     const debris = [];
-    const debrisCount = isVoidStorm ? 28 : isHypercane ? 14 : 8;
+    const debrisCount = isVoidStorm ? 60 : isHypercane ? 14 : 8;
     for (let i = 0; i < debrisCount; i++) {
       const kind = debrisTypes[i % debrisTypes.length];
       debris.push({
         angle:    Math.random() * Math.PI * 2,
         fracH:    0.05 + Math.random() * 0.88,
-        speed:    (0.030 + Math.random() * 0.060) * (isVoidStorm ? 2.4 : isHypercane ? 1.5 : 1),
+        speed:    (0.030 + Math.random() * 0.060) * (isVoidStorm ? 5.5 : isHypercane ? 1.5 : 1),
         rotSpeed: (Math.random() < 0.5 ? 1 : -1) * (0.8 + Math.random() * 2.2),
         kind,
         x: spawnX, y: spawnY,
@@ -570,21 +570,21 @@ function updateTornado() {
   if (!tornado) return;
 
   // Grow/shrink tornado scale dynamically as wind changes
-  const targetScale = isVoidStorm ? 3.50 : isHypercane ? 1.85 : 1.0;
+  const targetScale = isVoidStorm ? 8.00 : isHypercane ? 1.85 : 1.0;
   tornado.scale = (tornado.scale || 1.0) + (targetScale - (tornado.scale || 1.0)) * 0.025;
 
   const tScale = tornado.scale;
-  tornado.angle += isVoidStorm ? 0.22 : isHypercane ? 0.12 : 0.07;
+  tornado.angle += isVoidStorm ? 0.48 : isHypercane ? 0.12 : 0.07;
 
   if (isTornado) {
-    tornado.alpha = Math.min(1, tornado.alpha + (isVoidStorm ? 0.045 : isHypercane ? 0.028 : 0.016));
+    tornado.alpha = Math.min(1, tornado.alpha + (isVoidStorm ? 0.090 : isHypercane ? 0.028 : 0.016));
 
-    const orbitSpeed = (isVoidStorm ? 0.022 : isHypercane ? 0.012 : 0.007) * (tornado.orbitDir || 1);
+    const orbitSpeed = (isVoidStorm ? 0.060 : isHypercane ? 0.012 : 0.007) * (tornado.orbitDir || 1);
     tornado.orbitAngle = (tornado.orbitAngle || 0) + orbitSpeed;
-    const baseRadius  = isVoidStorm ? 160 : tScale > 1.2 ? 260 : 340;
+    const baseRadius  = isVoidStorm ?  60 : tScale > 1.2 ? 260 : 340;
     const orbitRadius = baseRadius + Math.sin(tornado.orbitAngle * 1.7) * (isVoidStorm ? 80 : 120);
     const targetX = player.x + Math.cos(tornado.orbitAngle) * orbitRadius;
-    const chaseSpeed = isVoidStorm ? 0.055 : tScale > 1.2 ? 0.030 : 0.018;
+    const chaseSpeed = isVoidStorm ? 0.130 : tScale > 1.2 ? 0.030 : 0.018;
     tornado.x += (targetX - tornado.x) * chaseSpeed;
     tornado.y  = baseGroundY(tornado.x);
   } else {
@@ -645,7 +645,7 @@ function updateFreezing() {
     freezing = Math.max(0, freezing - warmRate);
     return;
   }
-  const tornadoBonus = wind.force < -2.60 ? 0.00420 : wind.force < -1.80 ? 0.00130 : (wind.force < -1.00 || wind.force > 1.00) ? 0.00045 : 0;
+  const tornadoBonus = wind.force < -2.60 ? 0.0160 : wind.force < -1.80 ? 0.00130 : (wind.force < -1.00 || wind.force > 1.00) ? 0.00045 : 0;
   const rate = 0.00008 + wind.strength * 0.00055 + tornadoBonus;
   freezing = Math.min(1, freezing + rate);
   if (freezing >= 1) {
@@ -799,19 +799,19 @@ function drawSky() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
-  // Void storm — pulsing purple veil over entire sky
+  // Void storm — pulsing blood-red veil over entire sky
   if (voidT > 0) {
-    const pulse = 0.5 + 0.5 * Math.sin(frame * 0.04);
+    const pulse = 0.5 + 0.5 * Math.sin(frame * 0.06);
     ctx.save();
-    ctx.globalAlpha = voidT * (0.18 + pulse * 0.12);
-    ctx.fillStyle = 'rgba(80,0,120,1)';
-    ctx.fillRect(0, 0, W, H);
-    // Crackling edge light at horizon
     ctx.globalAlpha = voidT * (0.22 + pulse * 0.14);
-    const vg = ctx.createLinearGradient(0, H * 0.6, 0, H);
-    vg.addColorStop(0, 'rgba(120,0,180,0)');
-    vg.addColorStop(1, 'rgba(160,20,220,0.55)');
-    ctx.fillStyle = vg; ctx.fillRect(0, H * 0.6, W, H * 0.4);
+    ctx.fillStyle = 'rgba(160,0,0,1)';
+    ctx.fillRect(0, 0, W, H);
+    // Crackling hellfire glow at horizon
+    ctx.globalAlpha = voidT * (0.30 + pulse * 0.18);
+    const vg = ctx.createLinearGradient(0, H * 0.55, 0, H);
+    vg.addColorStop(0, 'rgba(200,20,0,0)');
+    vg.addColorStop(1, 'rgba(255,60,0,0.70)');
+    ctx.fillStyle = vg; ctx.fillRect(0, H * 0.55, W, H * 0.45);
     ctx.restore();
   }
 
@@ -2766,7 +2766,7 @@ function drawHUD() {
   const fillW = Math.min(barW/2, Math.abs(f)/0.90 * (barW/2));
   if (Math.abs(f) > 0.03) {
     const wCol = f > 0.04 ? '#e8c84a'
-               : wi.lvl>=7 ? '#ffffff'
+               : wi.lvl>=7 ? '#ff3300'
                : wi.lvl>=5 ? '#cc44ff'
                : wi.lvl>=3 ? '#e84040'
                : wi.lvl>=2 ? '#e8902a' : '#5dade2';
@@ -2781,7 +2781,7 @@ function drawHUD() {
   ctx.fillStyle = f >  0.04 ? '#e8c84a' : 'rgba(255,255,255,0.2)';
   ctx.textAlign = 'right'; ctx.fillText('►', bx+barW+14, by+7);
 
-  const lblCol = wi.lvl>=7?'#ffffff':wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
+  const lblCol = wi.lvl>=7?'#ff3300':wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
   ctx.fillStyle = lblCol; ctx.font = 'bold 11px Courier New';
   ctx.textAlign = 'center'; ctx.fillText(wi.label, mx, 29);
   ctx.restore();
@@ -2789,7 +2789,7 @@ function drawHUD() {
   // Score + tier (top left) — shows current position; maxReach tracks best
   const score = Math.floor(player.x / 12);
   const tier  = getWindTier();
-  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff','#ffffff'][tier] || '#ffffff';
+  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff','#ff3300'][tier] || '#ff3300';
 
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.48)'; rrect(14,10,164,40,5); ctx.fill();
@@ -2821,27 +2821,27 @@ function drawHUD() {
     const t = secretTierTimer / 280;   // 1→0 as it fades
     const alpha = t < 0.15 ? t / 0.15 : t > 0.6 ? (t - 0.6) / 0.4 * (t > 0.85 ? (t - 0.85) / 0.15 : 1) : 1;
     ctx.save();
-    // Dark purple full-screen veil
-    ctx.globalAlpha = Math.min(0.88, t * 1.4);
-    ctx.fillStyle = '#0a0010';
+    // Deep blood-red full-screen veil
+    ctx.globalAlpha = Math.min(0.92, t * 1.4);
+    ctx.fillStyle = '#0d0000';
     ctx.fillRect(0, 0, W, H);
-    // Pulsing purple edge glow
-    ctx.globalAlpha = Math.min(0.6, t) * (0.5 + 0.5 * Math.sin(frame * 0.18));
+    // Pulsing hellfire edge glow
+    ctx.globalAlpha = Math.min(0.65, t) * (0.5 + 0.5 * Math.sin(frame * 0.18));
     const eg = ctx.createRadialGradient(W/2, H/2, H * 0.2, W/2, H/2, H);
-    eg.addColorStop(0, 'rgba(80,0,120,0)'); eg.addColorStop(1, 'rgba(160,0,220,0.70)');
+    eg.addColorStop(0, 'rgba(180,0,0,0)'); eg.addColorStop(1, 'rgba(255,30,0,0.75)');
     ctx.fillStyle = eg; ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = Math.min(1, t * 1.6);
     ctx.textAlign = 'center';
     // Warning line
-    ctx.font = 'bold 11px Courier New'; ctx.fillStyle = 'rgba(180,100,255,0.80)';
+    ctx.font = 'bold 11px Courier New'; ctx.fillStyle = 'rgba(255,120,60,0.90)';
     ctx.fillText('— SECRET TIER UNLOCKED —', W/2, H/2 - 44);
     // Main title
-    ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#ff3300';
     ctx.fillText('VOID STORM', W/2, H/2 - 4);
     // Subtitle
-    ctx.font = '11px Courier New'; ctx.fillStyle = 'rgba(200,160,255,0.90)';
+    ctx.font = '11px Courier New'; ctx.fillStyle = 'rgba(255,180,100,0.90)';
     ctx.fillText('NO SHELTER EXISTS AT THIS DEPTH', W/2, H/2 + 24);
-    ctx.font = '9px Courier New'; ctx.fillStyle = 'rgba(160,100,220,0.70)';
+    ctx.font = '9px Courier New'; ctx.fillStyle = 'rgba(220,80,30,0.80)';
     ctx.fillText('2500m — BEYOND THE KNOWN', W/2, H/2 + 44);
     ctx.restore();
   }
