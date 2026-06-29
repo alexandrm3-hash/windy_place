@@ -318,7 +318,8 @@ function extendMap() {
     // Maybe place a decoration (snowman or pine tree)
     if (chunkW > 60 && Math.random() < 0.45) {
       const dx = chunkX + 20 + Math.random() * Math.max(0, chunkW - 40);
-      decorations.push({ x: dx, y: baseGroundY(dx), type: Math.random() < 0.5 ? 'snowman' : 'pinetree' });
+      decorations.push({ x: dx, y: baseGroundY(dx), type: Math.random() < 0.5 ? 'snowman' : 'pinetree',
+                         vx: 0, vy: 0, angle: 0, flying: false, alpha: 1 });
     }
 
     genFrontier = chunkX + chunkW;
@@ -329,7 +330,7 @@ function trimPlatforms() {
   const cut = player.x - 6000;  // keep terrain far behind so backtracking works
   platforms   = platforms.filter(p => p.x + p.w >= cut);
   houses      = houses.filter(h => h.alpha > 0.02 && h.x + h.w >= cut - 400);
-  decorations = decorations.filter(d => d.x >= cut - 100);
+  decorations = decorations.filter(d => d.alpha > 0.02 && d.x >= cut - 100);
 }
 
 // ── Init ─────────────────────────────────────────────────
@@ -478,7 +479,6 @@ function updatePlayer() {
   if (Math.abs(player.vx) > 0.5 && player.onGround) {
     if (++player.walkT >= walkStep) {
       player.walkT = 0; player.walkF = (player.walkF + 1) % 6;
-      WindAudio.footstep(sprinting);
     }
   } else if (player.onGround) { player.walkF = 0; }
 
@@ -526,6 +526,24 @@ function handleEnterExit() {
         if (h.type === 'bunker') challenge = null; // cancel any active challenge
         break;
       }
+    }
+  }
+}
+
+function updateDecorations() {
+  const isTornado = wind.force < -1.00 || wind.force > 1.00;
+  const isHypercane = wind.force < -1.80;
+  const liftMult = isHypercane ? 3.5 : 1.8;
+  for (const d of decorations) {
+    if (d.flying) {
+      d.vy = Math.max(-22, d.vy - 0.55 * liftMult);
+      d.vx = Math.max(-28, d.vx + wind.force * 0.9 * liftMult);
+      d.x += d.vx;
+      d.y += d.vy;
+      d.angle += d.vx * 0.025;
+      if (d.y - cam.y < -120) d.alpha -= 0.04;
+    } else if (isTornado) {
+      d.flying = true;
     }
   }
 }
@@ -757,6 +775,7 @@ function update() {
   updateSnow();
   updateWindDebris();
   updateHouses();
+  updateDecorations();
   updateTornado();
   updateFreezing();
   updateChallenge();
@@ -1192,7 +1211,11 @@ function drawTerrain() {
     ctx.fillStyle = bg;
     ctx.fill();
 
-    // Clip for inner textures
+    // Clip textures to a stable rectangle — avoids flicker from complex polygon clip
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(screenL, topY + 6, screenR - screenL, bot - topY);
     ctx.clip();
 
     // Strata
@@ -1268,11 +1291,12 @@ function drawTerrain() {
   }
 }
 
-function drawSnowman(x, y) {
-  const lean = Math.max(-0.28, Math.min(0.28, wind.force * 0.14));
+function drawSnowman(x, y, angle) {
+  const lean = angle !== undefined ? angle : Math.max(-0.28, Math.min(0.28, wind.force * 0.14));
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(lean);
+  ctx.scale(1.7, 1.7);
 
   // Bottom ball
   ctx.fillStyle = '#e8f4fc'; ctx.strokeStyle = 'rgba(140,190,220,0.5)'; ctx.lineWidth = 0.6;
@@ -1331,32 +1355,45 @@ function drawSnowman(x, y) {
   ctx.restore();
 }
 
-function drawPineTree(x, y) {
-  const lean = Math.max(-0.18, Math.min(0.18, wind.force * 0.08));
+function drawPineTree(x, y, angle) {
+  // Swing: base lean + oscillation scaled by wind strength
+  const swing = angle !== undefined ? angle
+    : wind.force * 0.09 + Math.sin(frame * (0.03 + wind.strength * 0.05)) * wind.strength * 0.18;
+  const lean = Math.max(-0.55, Math.min(0.55, swing));
+
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(lean);
+  ctx.scale(6.5, 6.5);
 
-  // Trunk
+  // Trunk — very tall, fixed
   ctx.fillStyle = '#4a2e10';
-  ctx.fillRect(-2, -9, 4, 9);
+  ctx.fillRect(-2.5, -28, 5, 28);
 
-  // Three layered triangles
+  // Seven layered triangles — each swings progressively more at top
   const layers = [
-    { y: -8,  hw: 14, h: 11 },
-    { y: -16, hw: 10, h: 10 },
-    { y: -23, hw:  7, h:  9 },
+    { y: -8,  hw: 18, h: 13, swingFrac: 0.03 },
+    { y: -19, hw: 15, h: 13, swingFrac: 0.12 },
+    { y: -30, hw: 12, h: 13, swingFrac: 0.28 },
+    { y: -40, hw:  9, h: 12, swingFrac: 0.48 },
+    { y: -49, hw:  7, h: 11, swingFrac: 0.65 },
+    { y: -57, hw:  5, h: 10, swingFrac: 0.82 },
+    { y: -64, hw:  3, h:  9, swingFrac: 1.00 },
   ];
   for (const l of layers) {
-    // Dark green body
+    ctx.save();
+    // Pivot at bottom of each layer, swing more toward top
+    ctx.translate(0, l.y);
+    ctx.rotate(lean * l.swingFrac);
+    ctx.translate(0, -l.y);
+
     ctx.fillStyle = '#183018';
     ctx.beginPath(); ctx.moveTo(0, l.y - l.h); ctx.lineTo(-l.hw, l.y); ctx.lineTo(l.hw, l.y); ctx.closePath(); ctx.fill();
-    // Lighter inner face
     ctx.fillStyle = '#285028';
     ctx.beginPath(); ctx.moveTo(0, l.y - l.h + 2); ctx.lineTo(-l.hw + 3, l.y); ctx.lineTo(l.hw - 3, l.y); ctx.closePath(); ctx.fill();
-    // Snow on top half of each layer
     ctx.fillStyle = 'rgba(216,238,252,0.82)';
     ctx.beginPath(); ctx.moveTo(0, l.y - l.h); ctx.lineTo(-l.hw * 0.45, l.y - l.h * 0.45); ctx.lineTo(l.hw * 0.45, l.y - l.h * 0.45); ctx.closePath(); ctx.fill();
+
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -1364,9 +1401,12 @@ function drawPineTree(x, y) {
 function drawDecorations() {
   for (const d of decorations) {
     const sx = d.x - cam.x, sy = d.y - cam.y;
-    if (sx < -80 || sx > W + 80 || sy > H + 10) continue;
-    if (d.type === 'snowman') drawSnowman(sx, sy);
-    else drawPineTree(sx, sy);
+    if (sx < -160 || sx > W + 160 || sy > H + 20) continue;
+    ctx.save();
+    ctx.globalAlpha = d.alpha;
+    if (d.type === 'snowman') drawSnowman(sx, sy, d.flying ? d.angle : undefined);
+    else drawPineTree(sx, sy, d.flying ? d.angle : undefined);
+    ctx.restore();
   }
 }
 
