@@ -1417,10 +1417,45 @@ function drawHouse(h) {
       ctx.fillRect(bx, -BH/2 - 10, bw, 8);
     }
 
-    // ── Sandbag wall (staggered rows) ────────────────
+    // ── Massive concrete walls (full height) ──────────
+    const wallGrd = ctx.createLinearGradient(-hw, 0, hw, 0);
+    wallGrd.addColorStop(0,    '#3e3c34');
+    wallGrd.addColorStop(0.08, '#4a4840');
+    wallGrd.addColorStop(0.50, '#46443c');
+    wallGrd.addColorStop(0.92, '#3a3830');
+    wallGrd.addColorStop(1,    '#2c2a24');
+    ctx.fillStyle = wallGrd;
+    ctx.fillRect(-hw, -BH/2, h.w, BH);
+
+    // Concrete block horizontal seams (5 rows)
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.4;
+    for (let sl = 1; sl < 5; sl++) {
+      const sy2 = -BH/2 + sl * (BH / 5);
+      ctx.beginPath(); ctx.moveTo(-hw, sy2); ctx.lineTo(hw, sy2); ctx.stroke();
+    }
+    // Vertical block seams (staggered per row)
+    for (let sl = 0; sl < 5; sl++) {
+      const rowTop = -BH/2 + sl * (BH / 5);
+      const cols = sl % 2 === 0 ? 3 : 4;
+      for (let vc = 1; vc < cols; vc++) {
+        const vx2 = -hw + vc * (h.w / cols);
+        ctx.beginPath(); ctx.moveTo(vx2, rowTop); ctx.lineTo(vx2, rowTop + BH/5); ctx.stroke();
+      }
+    }
+    // Surface weathering patches
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(-hw + 20, -BH/2 + 8, 22, 18);
+    ctx.fillRect(hw - 38, -BH/2 + 30, 16, 24);
+
+    // Left wall light bevel
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillRect(-hw, -BH/2, 5, BH);
+
+    // ── Sandbag wall across the base (drawn over wall) ─
     const sbW = 17, sbH = 10;
     for (let row = 0; row < 2; row++) {
-      const rowY = BH/2 - 12 - row * (sbH - 2);
+      // row 0 = front (bottom), row 1 = back (slightly higher)
+      const rowY = BH/2 - 7 - row * (sbH - 2);
       const offset = row % 2 === 0 ? 0 : sbW / 2;
       const count = Math.ceil(h.w / sbW) + 1;
       for (let sb = 0; sb < count; sb++) {
@@ -1435,40 +1470,6 @@ function drawHouse(h) {
         ctx.beginPath(); ctx.moveTo(sbX + 1, rowY + sbH/2); ctx.lineTo(sbX + sbW - 1, rowY + sbH/2); ctx.stroke();
       }
     }
-
-    // ── Massive concrete walls ────────────────────────
-    const wallGrd = ctx.createLinearGradient(-hw, 0, hw, 0);
-    wallGrd.addColorStop(0,    '#3e3c34');
-    wallGrd.addColorStop(0.08, '#4a4840');
-    wallGrd.addColorStop(0.50, '#46443c');
-    wallGrd.addColorStop(0.92, '#3a3830');
-    wallGrd.addColorStop(1,    '#2c2a24');
-    ctx.fillStyle = wallGrd;
-    ctx.fillRect(-hw, -BH/2, h.w, BH - 20);
-
-    // Concrete block horizontal seams (5 rows)
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.4;
-    for (let sl = 1; sl < 5; sl++) {
-      const sy2 = -BH/2 + sl * ((BH - 20) / 5);
-      ctx.beginPath(); ctx.moveTo(-hw, sy2); ctx.lineTo(hw, sy2); ctx.stroke();
-    }
-    // Vertical block seams (staggered per row)
-    for (let sl = 0; sl < 5; sl++) {
-      const rowTop = -BH/2 + sl * ((BH - 20) / 5);
-      const cols = sl % 2 === 0 ? 3 : 4;
-      for (let vc = 1; vc < cols; vc++) {
-        const vx2 = -hw + vc * (h.w / cols);
-        ctx.beginPath(); ctx.moveTo(vx2, rowTop); ctx.lineTo(vx2, rowTop + (BH - 20)/5); ctx.stroke();
-      }
-    }
-    // Surface weathering (slightly darker patches)
-    ctx.fillStyle = 'rgba(0,0,0,0.08)';
-    ctx.fillRect(-hw + 20, -BH/2 + 8, 22, 18);
-    ctx.fillRect(hw - 38, -BH/2 + 30, 16, 24);
-
-    // Left/right wall light bevel
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
-    ctx.fillRect(-hw, -BH/2, 5, BH - 20);
 
     // ── Flat armoured roof ────────────────────────────
     ctx.fillStyle = '#1c1a14';
@@ -1526,8 +1527,8 @@ function drawHouse(h) {
     }
 
     // ── Vault door (center, massive) ──────────────────
-    const dw = 38, dh = 60;
-    const dTop = BH/2 - dh - 20;
+    const dw = 38, dh = 54;
+    const dTop = BH/2 - dh - 20; // sits above the sandbag base
     // Door frame (thick, recessed)
     ctx.fillStyle = '#141210';
     ctx.fillRect(-dw/2 - 4, dTop - 4, dw + 8, dh + 8);
