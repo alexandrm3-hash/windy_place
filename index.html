@@ -87,7 +87,7 @@
 #test-menu button:last-child { border-bottom: none; }
 #test-menu button:hover { background: rgba(255,255,255,0.08); }
 #test-menu button.hyper { color: #cc44ff; }
-#test-menu button.void  { color: #ffffff; text-shadow: 0 0 8px #aaaaaa; }
+#test-menu button.void  { color: #cc44ff; text-shadow: 0 0 8px #aa00ff; }
 </style>
 
 <div id="test-btn" onclick="toggleTestMenu()">⚡ WIND</div>
@@ -2464,6 +2464,7 @@ function drawTornado() {
   if (sx < -400 || sx > W + 400) return;
 
   const tScale = tornado.scale || 1.0;
+  const isVoid  = tScale > 3.0;
   const isHyper = tScale > 1.2;
   const TH = 185 * tScale, TW = 100 * tScale, BW = 10 * tScale;
   const a  = tornado.alpha;
@@ -2474,8 +2475,8 @@ function drawTornado() {
   // ── 1. Outer storm halo ───────────────────────────────────
   ctx.globalAlpha = a * 0.22;
   const haloGrd = ctx.createRadialGradient(sx, sy - TH * 0.5, 0, sx, sy - TH * 0.5, TW * 3.2);
-  haloGrd.addColorStop(0,   isHyper ? 'rgba(80,20,120,0.55)' : 'rgba(30,40,70,0.55)');
-  haloGrd.addColorStop(0.5, isHyper ? 'rgba(50,10,90,0.25)'  : 'rgba(20,30,55,0.25)');
+  haloGrd.addColorStop(0,   isVoid ? 'rgba(10,10,10,0.60)' : isHyper ? 'rgba(80,20,120,0.55)' : 'rgba(30,40,70,0.55)');
+  haloGrd.addColorStop(0.5, isVoid ? 'rgba(5,5,5,0.28)'    : isHyper ? 'rgba(50,10,90,0.25)'  : 'rgba(20,30,55,0.25)');
   haloGrd.addColorStop(1,   'rgba(0,0,0,0)');
   ctx.fillStyle = haloGrd;
   ctx.fillRect(sx - TW * 3.5, sy - TH - 60, TW * 7, TH + 80);
@@ -2487,8 +2488,8 @@ function drawTornado() {
     const cOffy = Math.cos(ang * 0.4 + cl * 0.9) * 12;
     const cR    = TW * (1.2 + cl * 0.28);
     const cGrd  = ctx.createRadialGradient(sx + cOff, sy - TH + cOffy, 0, sx + cOff, sy - TH + cOffy, cR);
-    cGrd.addColorStop(0,   isHyper ? 'rgba(40,10,70,0.88)' : 'rgba(28,36,52,0.88)');
-    cGrd.addColorStop(0.45, isHyper ? 'rgba(30,8,58,0.60)' : 'rgba(20,28,44,0.60)');
+    cGrd.addColorStop(0,   isVoid ? 'rgba(8,8,8,0.92)'     : isHyper ? 'rgba(40,10,70,0.88)' : 'rgba(28,36,52,0.88)');
+    cGrd.addColorStop(0.45, isVoid ? 'rgba(5,5,5,0.65)'    : isHyper ? 'rgba(30,8,58,0.60)'  : 'rgba(20,28,44,0.60)');
     cGrd.addColorStop(1,   'rgba(0,0,0,0)');
     ctx.fillStyle = cGrd;
     ctx.beginPath();
@@ -2508,9 +2509,11 @@ function drawTornado() {
 
     // Shadow stripe (wide, dark)
     ctx.globalAlpha = a * (0.12 + (1 - t) * 0.22);
-    ctx.strokeStyle = isHyper
-      ? `rgba(${(20 + t*30)|0},${(5 + t*10)|0},${(40 + t*20)|0},0.9)`
-      : `rgba(${(30 + t*40)|0},${(40 + t*35)|0},${(60 + t*30)|0},0.9)`;
+    ctx.strokeStyle = isVoid
+      ? `rgba(${(10 + t*20)|0},${(10 + t*20)|0},${(10 + t*20)|0},0.9)`
+      : isHyper
+        ? `rgba(${(20 + t*30)|0},${(5 + t*10)|0},${(40 + t*20)|0},0.9)`
+        : `rgba(${(30 + t*40)|0},${(40 + t*35)|0},${(60 + t*30)|0},0.9)`;
     ctx.lineWidth = (3.5 + (1 - t) * 5) * tScale;
     ctx.beginPath();
     ctx.ellipse(sx + swayX, bandY, bandW, bandW * 0.13, 0, 0, Math.PI * 2);
@@ -2518,9 +2521,9 @@ function drawTornado() {
 
     // Highlight stripe (thin, lighter)
     ctx.globalAlpha = a * (0.08 + (1 - t) * 0.14);
-    ctx.strokeStyle = isHyper
-      ? `rgba(180,80,255,0.7)`
-      : `rgba(140,170,210,0.7)`;
+    ctx.strokeStyle = isVoid
+      ? `rgba(230,230,230,0.75)`
+      : isHyper ? `rgba(180,80,255,0.7)` : `rgba(140,170,210,0.7)`;
     ctx.lineWidth = (0.8 + (1 - t) * 1.4) * tScale;
     ctx.beginPath();
     ctx.ellipse(sx + swayX2, bandY, bandW * 0.7, bandW * 0.09, 0, 0, Math.PI * 2);
@@ -2531,7 +2534,12 @@ function drawTornado() {
   ctx.globalAlpha = a * 0.28;
   const innerW = TW * 0.42, innerBW = BW * 0.6;
   const coneGrd = ctx.createLinearGradient(sx, sy - TH, sx, sy);
-  if (isHyper) {
+  if (isVoid) {
+    coneGrd.addColorStop(0,   'rgba(220,220,220,0.80)');
+    coneGrd.addColorStop(0.35,'rgba(140,140,140,0.58)');
+    coneGrd.addColorStop(0.72,'rgba(60,60,60,0.35)');
+    coneGrd.addColorStop(1,   'rgba(10,10,10,0.12)');
+  } else if (isHyper) {
     coneGrd.addColorStop(0,   'rgba(140,40,220,0.85)');
     coneGrd.addColorStop(0.35,'rgba(100,20,180,0.65)');
     coneGrd.addColorStop(0.72,'rgba(70,10,130,0.40)');
@@ -2556,7 +2564,7 @@ function drawTornado() {
   for (let rope = 0; rope < 4; rope++) {
     const ropeOff = (rope / 4) * Math.PI * 2;
     ctx.globalAlpha = a * 0.30;
-    ctx.strokeStyle = isHyper ? 'rgba(200,100,255,0.65)' : 'rgba(180,205,240,0.55)';
+    ctx.strokeStyle = isVoid ? 'rgba(245,245,245,0.70)' : isHyper ? 'rgba(200,100,255,0.65)' : 'rgba(180,205,240,0.55)';
     ctx.lineWidth = 1.4 * tScale;
     ctx.beginPath();
     for (let i = 0; i <= 24; i++) {
@@ -2575,8 +2583,8 @@ function drawTornado() {
   ctx.globalAlpha = a * 0.38;
   const dustR = 110 * tScale;
   const dustGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, dustR);
-  dustGrd.addColorStop(0,   isHyper ? 'rgba(100,30,160,0.70)' : 'rgba(100,80,50,0.70)');
-  dustGrd.addColorStop(0.40, isHyper ? 'rgba(70,15,110,0.45)' : 'rgba(80,60,35,0.45)');
+  dustGrd.addColorStop(0,   isVoid ? 'rgba(20,20,20,0.75)'    : isHyper ? 'rgba(100,30,160,0.70)' : 'rgba(100,80,50,0.70)');
+  dustGrd.addColorStop(0.40, isVoid ? 'rgba(10,10,10,0.48)'   : isHyper ? 'rgba(70,15,110,0.45)'  : 'rgba(80,60,35,0.45)');
   dustGrd.addColorStop(0.75,'rgba(50,40,25,0.20)');
   dustGrd.addColorStop(1,   'rgba(0,0,0,0)');
   ctx.fillStyle = dustGrd;
@@ -2586,7 +2594,7 @@ function drawTornado() {
 
   // Spinning dust streaks at the base
   ctx.globalAlpha = a * 0.45;
-  ctx.strokeStyle = isHyper ? 'rgba(160,60,255,0.55)' : 'rgba(140,110,70,0.55)';
+  ctx.strokeStyle = isVoid ? 'rgba(200,200,200,0.60)' : isHyper ? 'rgba(160,60,255,0.55)' : 'rgba(140,110,70,0.55)';
   ctx.lineWidth = 2 * tScale;
   for (let ds = 0; ds < 10; ds++) {
     const da = ang * 3.5 + (ds / 10) * Math.PI * 2;
@@ -2600,8 +2608,8 @@ function drawTornado() {
   // Inner vortex glow at tip
   ctx.globalAlpha = a * 0.55;
   const tipGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, 30 * tScale);
-  tipGrd.addColorStop(0, isHyper ? 'rgba(220,130,255,0.90)' : 'rgba(200,220,255,0.90)');
-  tipGrd.addColorStop(0.5, isHyper ? 'rgba(140,50,220,0.55)' : 'rgba(140,170,220,0.55)');
+  tipGrd.addColorStop(0, isVoid ? 'rgba(255,255,255,0.95)' : isHyper ? 'rgba(220,130,255,0.90)' : 'rgba(200,220,255,0.90)');
+  tipGrd.addColorStop(0.5, isVoid ? 'rgba(180,180,180,0.55)' : isHyper ? 'rgba(140,50,220,0.55)' : 'rgba(140,170,220,0.55)');
   tipGrd.addColorStop(1,   'rgba(0,0,0,0)');
   ctx.fillStyle = tipGrd;
   ctx.beginPath();
@@ -2610,7 +2618,7 @@ function drawTornado() {
 
   // ── 7. Rain curtain around the tornado ───────────────────
   ctx.globalAlpha = a * 0.18;
-  ctx.strokeStyle = isHyper ? 'rgba(180,100,255,0.55)' : 'rgba(160,200,240,0.55)';
+  ctx.strokeStyle = isVoid ? 'rgba(210,210,210,0.50)' : isHyper ? 'rgba(180,100,255,0.55)' : 'rgba(160,200,240,0.55)';
   ctx.lineWidth = 0.8;
   for (let ri = 0; ri < 22; ri++) {
     const ra = (ri / 22) * Math.PI * 2 + ang * 0.4;
@@ -2766,7 +2774,7 @@ function drawHUD() {
   const fillW = Math.min(barW/2, Math.abs(f)/0.90 * (barW/2));
   if (Math.abs(f) > 0.03) {
     const wCol = f > 0.04 ? '#e8c84a'
-               : wi.lvl>=7 ? '#ffffff'
+               : wi.lvl>=7 ? '#cc44ff'
                : wi.lvl>=5 ? '#cc44ff'
                : wi.lvl>=3 ? '#e84040'
                : wi.lvl>=2 ? '#e8902a' : '#5dade2';
@@ -2781,7 +2789,7 @@ function drawHUD() {
   ctx.fillStyle = f >  0.04 ? '#e8c84a' : 'rgba(255,255,255,0.2)';
   ctx.textAlign = 'right'; ctx.fillText('►', bx+barW+14, by+7);
 
-  const lblCol = wi.lvl>=7?'#ffffff':wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
+  const lblCol = wi.lvl>=7?'#cc44ff':wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
   ctx.fillStyle = lblCol; ctx.font = 'bold 11px Courier New';
   ctx.textAlign = 'center'; ctx.fillText(wi.label, mx, 29);
   ctx.restore();
@@ -2789,7 +2797,7 @@ function drawHUD() {
   // Score + tier (top left) — shows current position; maxReach tracks best
   const score = Math.floor(player.x / 12);
   const tier  = getWindTier();
-  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff','#ffffff'][tier] || '#ffffff';
+  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff','#cc44ff'][tier] || '#cc44ff';
 
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.48)'; rrect(14,10,164,40,5); ctx.fill();
@@ -2833,15 +2841,15 @@ function drawHUD() {
     ctx.globalAlpha = Math.min(1, t * 1.6);
     ctx.textAlign = 'center';
     // Warning line
-    ctx.font = 'bold 11px Courier New'; ctx.fillStyle = 'rgba(180,180,180,0.85)';
+    ctx.font = 'bold 11px Courier New'; ctx.fillStyle = 'rgba(180,100,255,0.85)';
     ctx.fillText('— SECRET TIER UNLOCKED —', W/2, H/2 - 44);
     // Main title
-    ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#cc44ff';
     ctx.fillText('VOID STORM', W/2, H/2 - 4);
     // Subtitle
-    ctx.font = '11px Courier New'; ctx.fillStyle = 'rgba(210,210,210,0.90)';
+    ctx.font = '11px Courier New'; ctx.fillStyle = 'rgba(200,140,255,0.90)';
     ctx.fillText('NO SHELTER EXISTS AT THIS DEPTH', W/2, H/2 + 24);
-    ctx.font = '9px Courier New'; ctx.fillStyle = 'rgba(150,150,150,0.75)';
+    ctx.font = '9px Courier New'; ctx.fillStyle = 'rgba(160,80,220,0.80)';
     ctx.fillText('2500m — BEYOND THE KNOWN', W/2, H/2 + 44);
     ctx.restore();
   }
