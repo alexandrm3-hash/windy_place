@@ -2384,20 +2384,37 @@ const WindAudio = (() => {
   function footstep(running) {
     if (!ac) return;
     const t = ac.currentTime;
-    // Short crunchy snow burst
-    const len = ac.sampleRate * 0.07;
+
+    // Shared: crunchy snow noise burst
+    const len = Math.floor(ac.sampleRate * (running ? 0.055 : 0.08));
     const buf = ac.createBuffer(1, len, ac.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) {
-      const env = Math.pow(1 - i / len, 1.8);
+      const env = Math.pow(1 - i / len, running ? 2.4 : 1.8);
       d[i] = (Math.random() * 2 - 1) * env;
     }
     const s  = ac.createBufferSource(); s.buffer = buf;
-    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 600;
-    const lp = ac.createBiquadFilter(); lp.type = 'lowpass';  lp.frequency.value = running ? 3200 : 2200;
-    const g  = ac.createGain(); g.gain.value = running ? 0.16 : 0.10;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = running ? 900 : 550;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass';  lp.frequency.value = running ? 4500 : 2000;
+    const g  = ac.createGain(); g.gain.value = running ? 0.20 : 0.09;
     s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(master);
     s.start(t);
+
+    if (running) {
+      // Extra low thud — pitched sine decay for heavy impact feel
+      const thudLen = Math.floor(ac.sampleRate * 0.12);
+      const tbuf = ac.createBuffer(1, thudLen, ac.sampleRate);
+      const td = tbuf.getChannelData(0);
+      for (let i = 0; i < thudLen; i++) {
+        const env = Math.pow(1 - i / thudLen, 1.4);
+        const freq = 90 - (i / thudLen) * 60; // pitch drops 90→30 Hz
+        td[i] = Math.sin(2 * Math.PI * freq * i / ac.sampleRate) * env;
+      }
+      const ts = ac.createBufferSource(); ts.buffer = tbuf;
+      const tg = ac.createGain(); tg.gain.value = 0.28;
+      ts.connect(tg); tg.connect(master);
+      ts.start(t);
+    }
   }
 
   function thunder() {
