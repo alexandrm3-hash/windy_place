@@ -410,9 +410,10 @@ function updatePlayer() {
     stamina = Math.max(0, stamina - 0.0038);          // ~4.4 s to fully drain
     if (stamina <= 0) { stamina = 0; staminaDepleted = true; staminaCooldown = 120; }
   } else {
+    const canRegen = player.onGround || player.inHouse;
     if (staminaDepleted) {
-      if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
-    } else {
+      if (canRegen && --staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
+    } else if (canRegen) {
       stamina = Math.min(1, stamina + 0.0018);         // ~9 s to fully regen
     }
   }
