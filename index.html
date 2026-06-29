@@ -819,7 +819,7 @@ function rrect(x, y, w, h, r) {
 function drawSky() {
   const s = wind.strength, f = wind.force;
   const isVoid = f < -2.60;
-  const voidT  = isVoid ? Math.min(1, (-f - 2.60) / 0.60) : 0; // 0→1 as force drops -2.6→-3.2
+  const voidT  = isVoid ? Math.min(1, (-f - 2.60) / 0.60) : 0;
   let top, bot;
   if (f > 0.04) {
     top = lrp(C.skyTop,   C.skyTail,   f * 3);
@@ -828,27 +828,26 @@ function drawSky() {
     top = lrp(C.skyTop,   C.skyStorm,  s * 0.8);
     bot = lrp(C.horizCalm,C.horizStorm,s);
   }
-  // Blend toward void storm palette
   if (voidT > 0) {
     top = lrp(top, C.skyVoid,  voidT);
     bot = lrp(bot, C.horizVoid, voidT);
   }
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0,    rgb(top));
-  g.addColorStop(0.55, rgb(lrp(top, bot, 0.5)));
-  g.addColorStop(0.88, rgb(bot));
+  g.addColorStop(0.40, rgb(lrp(top, bot, 0.3)));
+  g.addColorStop(0.72, rgb(lrp(top, bot, 0.7)));
+  g.addColorStop(0.90, rgb(bot));
   g.addColorStop(1,    rgb(lrp(bot, isVoid ? C.skyVoid : C.skyStorm, 0.4)));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
-  // Void storm — pulsing white static veil over entire sky
+  // Void storm veil
   if (voidT > 0) {
     const pulse = 0.5 + 0.5 * Math.sin(frame * 0.06);
     ctx.save();
     ctx.globalAlpha = voidT * (0.18 + pulse * 0.10);
     ctx.fillStyle = 'rgba(255,255,255,1)';
     ctx.fillRect(0, 0, W, H);
-    // Pale grey glow at horizon
     ctx.globalAlpha = voidT * (0.22 + pulse * 0.12);
     const vg = ctx.createLinearGradient(0, H * 0.55, 0, H);
     vg.addColorStop(0, 'rgba(200,200,200,0)');
@@ -857,41 +856,416 @@ function drawSky() {
     ctx.restore();
   }
 
-  // Stars — fade in calm weather, fade out in storms and tailwind
   const starFade = Math.max(0, 1 - s * 1.2 - (f > 0.04 ? f * 4 : 0));
   if (starFade > 0.02) {
     ctx.save();
-    for (let i = 0; i < 80; i++) {
-      const px = (i * 7919 + 2039) % 900;
-      const py = (i * 3461 +  829) % 240;
-      const sz = 0.5 + (i % 4) * 0.32;
-      const twinkle = 0.38 + 0.32 * Math.sin(frame * 0.019 + i * 1.73);
-      ctx.globalAlpha = twinkle * starFade * 0.62;
-      ctx.fillStyle = i % 9 === 0 ? '#ffe8c0' : '#ddeeff';
-      ctx.beginPath();
-      ctx.arc(px, py, sz, 0, Math.PI * 2);
-      ctx.fill();
+
+    // Milky Way — faint diagonal band of denser stars
+    const mwg = ctx.createLinearGradient(0, H * 0.05, W, H * 0.55);
+    mwg.addColorStop(0,   'rgba(180,200,240,0)');
+    mwg.addColorStop(0.3, `rgba(180,200,240,${(starFade * 0.06).toFixed(3)})`);
+    mwg.addColorStop(0.5, `rgba(200,215,255,${(starFade * 0.09).toFixed(3)})`);
+    mwg.addColorStop(0.7, `rgba(180,200,240,${(starFade * 0.06).toFixed(3)})`);
+    mwg.addColorStop(1,   'rgba(180,200,240,0)');
+    ctx.fillStyle = mwg;
+    ctx.fillRect(0, 0, W, H * 0.65);
+
+    // Dense star field — 220 stars, varied size + warm/cool tones
+    for (let i = 0; i < 220; i++) {
+      const px = (i * 6271 + 1483) % W;
+      const py = (i * 3833 +  617) % (H * 0.68);
+      const sz = i % 12 === 0 ? 1.6 + (i % 3) * 0.3      // big stars
+               : i % 5  === 0 ? 1.0 + (i % 2) * 0.25     // medium
+               :                0.4 + (i % 3) * 0.15;     // tiny
+      const twinkleRate = 0.012 + (i % 7) * 0.005;
+      const twinkle = 0.38 + 0.42 * Math.sin(frame * twinkleRate + i * 1.73);
+      ctx.globalAlpha = twinkle * starFade * (sz > 1.2 ? 0.85 : sz > 0.8 ? 0.65 : 0.45);
+      const col = i % 11 === 0 ? '#ffe0a0' : i % 7 === 0 ? '#ffd0d0' : i % 5 === 0 ? '#c0d8ff' : '#ddeeff';
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(px, py, sz, 0, Math.PI * 2); ctx.fill();
+      // Cross sparkle on brightest stars
+      if (sz > 1.4 && twinkle > 0.7) {
+        ctx.globalAlpha = (twinkle - 0.7) * starFade * 0.5;
+        ctx.strokeStyle = col; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(px - sz*3, py); ctx.lineTo(px + sz*3, py); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px, py - sz*3); ctx.lineTo(px, py + sz*3); ctx.stroke();
+      }
     }
+
+    // Shooting star — every 500 frames, lasts 45 frames
+    const shotPhase = frame % 500;
+    if (shotPhase < 45) {
+      const t = shotPhase / 45;
+      const sx = W * 0.75 - 220 * t, sy = H * 0.04 + 90 * t;
+      const fade = t < 0.6 ? t / 0.6 : (1 - t) / 0.4;
+      ctx.globalAlpha = fade * starFade * 0.95;
+      const trailLen = 60 + t * 40;
+      const ssg = ctx.createLinearGradient(sx, sy, sx + trailLen * 0.7, sy - trailLen * 0.4);
+      ssg.addColorStop(0, 'rgba(255,255,255,1)');
+      ssg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = ssg; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + trailLen * 0.7, sy - trailLen * 0.4); ctx.stroke();
+      ctx.globalAlpha = fade * starFade * 0.6;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(sx, sy, 1.5, 0, Math.PI*2); ctx.fill();
+    }
+
     ctx.restore();
   }
 
-  // Moon — crescent upper-right, fades in storms
+  // Moon — crescent with craters and soft glow
   const moonFade = Math.max(0, 0.72 - s * 0.55 - (f > 0.04 ? f * 3 : 0));
   if (moonFade > 0.04) {
     const mx = W * 0.82, my = H * 0.11;
     ctx.save();
     ctx.globalAlpha = moonFade;
-    const mgrd = ctx.createRadialGradient(mx, my, 0, mx, my, 42);
-    mgrd.addColorStop(0, 'rgba(210,218,188,0.14)');
+    // Outer glow
+    const mgrd = ctx.createRadialGradient(mx, my, 8, mx, my, 55);
+    mgrd.addColorStop(0, 'rgba(220,228,200,0.18)');
+    mgrd.addColorStop(0.5, 'rgba(210,220,188,0.07)');
     mgrd.addColorStop(1, 'rgba(210,218,188,0)');
     ctx.fillStyle = mgrd;
-    ctx.beginPath(); ctx.arc(mx, my, 42, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#e0dac8';
-    ctx.beginPath(); ctx.arc(mx, my, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx, my, 55, 0, Math.PI*2); ctx.fill();
+    // Moon disc
+    ctx.fillStyle = '#dedad0';
+    ctx.beginPath(); ctx.arc(mx, my, 14, 0, Math.PI*2); ctx.fill();
+    // Subtle craters
+    ctx.fillStyle = 'rgba(160,155,140,0.35)';
+    ctx.beginPath(); ctx.arc(mx - 4, my + 3, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx + 5, my - 4, 2.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx + 2, my + 6, 1.8, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx - 7, my - 2, 1.4, 0, Math.PI*2); ctx.fill();
+    // Highlight
+    ctx.fillStyle = 'rgba(255,255,240,0.25)';
+    ctx.beginPath(); ctx.arc(mx - 3, my - 4, 6, 0, Math.PI*2); ctx.fill();
+    // Crescent shadow
     ctx.fillStyle = `rgba(${top[0]},${top[1]},${top[2]},0.84)`;
-    ctx.beginPath(); ctx.arc(mx + 6, my - 1, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx + 6, my - 1, 11, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
+}
+
+function drawAurora() {
+  const auroraAlpha = Math.max(0.55, 1 - wind.strength * 0.5);
+  ctx.save();
+  const bands = [
+    { baseY: H * 0.12, freq: 0.006, speed: 0.008, color: [0, 255, 140],  width: 110 },
+    { baseY: H * 0.22, freq: 0.009, speed: 0.006, color: [0, 200, 255],  width: 85  },
+    { baseY: H * 0.32, freq: 0.005, speed: 0.010, color: [180, 80, 255], width: 65  },
+  ];
+  for (const band of bands) {
+    const pulse = 0.65 + 0.35 * Math.sin(frame * 0.016 + band.baseY * 0.03);
+    const [r, g, b] = band.color;
+    for (let x = 0; x < W; x += 16) {
+      const cy1 = band.baseY + Math.sin(x        * band.freq + frame * band.speed) * 45 + Math.sin(x        * band.freq * 2.1 + frame * band.speed * 0.6) * 20;
+      const cy2 = band.baseY + Math.sin((x + 16) * band.freq + frame * band.speed) * 45 + Math.sin((x + 16) * band.freq * 2.1 + frame * band.speed * 0.6) * 20;
+      const hw = band.width / 2;
+      const sg = ctx.createLinearGradient(0, cy1 - hw, 0, cy1 + hw);
+      const peak = (auroraAlpha * pulse * 0.72).toFixed(3);
+      sg.addColorStop(0,    `rgba(${r},${g},${b},0)`);
+      sg.addColorStop(0.35, `rgba(${r},${g},${b},${peak})`);
+      sg.addColorStop(0.65, `rgba(${r},${g},${b},${peak})`);
+      sg.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.moveTo(x,      cy1 - hw); ctx.lineTo(x + 16, cy2 - hw);
+      ctx.lineTo(x + 16, cy2 + hw); ctx.lineTo(x,      cy1 + hw);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+function drawBgForest() {
+  // Three dense forest silhouette layers at different parallax depths
+  const layers = [
+    { px: 0.05, py: 0.04, baseY: H * 0.72, color: 'rgba(12,22,40,0.55)', treeH: 40, tipH: 18, step: 9  },
+    { px: 0.14, py: 0.12, baseY: H * 0.80, color: 'rgba(9,17,33,0.70)',  treeH: 34, tipH: 15, step: 7  },
+    { px: 0.30, py: 0.22, baseY: H * 0.87, color: 'rgba(6,13,26,0.85)',  treeH: 26, tipH: 11, step: 6  },
+    { px: 0.52, py: 0.36, baseY: H * 0.92, color: 'rgba(5,10,22,0.92)',  treeH: 18, tipH:  8, step: 5  },
+  ];
+  for (const l of layers) {
+    const offX = cam.x * l.px, offY = cam.y * l.py;
+    const by = l.baseY + offY;
+    ctx.fillStyle = l.color;
+    ctx.beginPath();
+    ctx.moveTo(-10, H + 10);
+    for (let sx = -20; sx <= W + 20; sx += l.step) {
+      const wx = sx + offX;
+      const base = l.treeH * (0.55 + 0.45 * Math.abs(Math.sin(wx * 0.029 + 1.3)));
+      const mid  = l.treeH * 0.28 * Math.abs(Math.sin(wx * 0.074 + 2.9));
+      const tip  = l.tipH  * Math.pow(Math.max(0, Math.sin(wx * 0.44 + 0.6)), 3);
+      ctx.lineTo(sx, by - base - mid - tip);
+    }
+    ctx.lineTo(W + 10, H + 10);
+    ctx.closePath();
+    ctx.fill();
+    // Snow dusting on tips
+    const sg = ctx.createLinearGradient(0, by - l.treeH - l.tipH, 0, by - l.treeH * 0.6);
+    sg.addColorStop(0, `rgba(200,228,252,${(0.12 - l.px * 0.1).toFixed(3)})`);
+    sg.addColorStop(1, 'rgba(200,228,252,0)');
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.moveTo(-10, H + 10);
+    for (let sx = -20; sx <= W + 20; sx += l.step) {
+      const wx = sx + offX;
+      const base = l.treeH * (0.55 + 0.45 * Math.abs(Math.sin(wx * 0.029 + 1.3)));
+      const mid  = l.treeH * 0.28 * Math.abs(Math.sin(wx * 0.074 + 2.9));
+      const tip  = l.tipH  * Math.pow(Math.max(0, Math.sin(wx * 0.44 + 0.6)), 3);
+      ctx.lineTo(sx, by - base - mid - tip);
+    }
+    ctx.lineTo(W + 10, H + 10);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawBgTornados() {
+  const defs = [
+    { wx:  900, px: 0.06, groundY: 0.92, scale: 0.28, seed: 1.2 },
+    { wx: 2400, px: 0.10, groundY: 0.90, scale: 0.40, seed: 2.7 },
+    { wx: 4100, px: 0.07, groundY: 0.93, scale: 0.22, seed: 0.5 },
+    { wx: 5800, px: 0.13, groundY: 0.91, scale: 0.50, seed: 3.8 },
+    { wx: 7200, px: 0.05, groundY: 0.94, scale: 0.20, seed: 1.9 },
+    { wx: 3300, px: 0.09, groundY: 0.89, scale: 0.34, seed: 4.1 },
+  ];
+  for (const def of defs) {
+    const sx = def.wx - cam.x * def.px;
+    if (sx < -300 || sx > W + 300) continue;
+    const sy = H * def.groundY;
+    const ang = frame * 0.025 + def.seed;
+    const tScale = def.scale;
+    const a = 0.42;
+    const TH = 185 * tScale, TW = 100 * tScale, BW = 10 * tScale;
+
+    ctx.save();
+
+    // Storm halo
+    ctx.globalAlpha = a * 0.20;
+    const haloGrd = ctx.createRadialGradient(sx, sy - TH * 0.5, 0, sx, sy - TH * 0.5, TW * 3.2);
+    haloGrd.addColorStop(0,   'rgba(30,40,70,0.55)');
+    haloGrd.addColorStop(0.5, 'rgba(20,30,55,0.22)');
+    haloGrd.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = haloGrd;
+    ctx.fillRect(sx - TW * 3.5, sy - TH - 50, TW * 7, TH + 70);
+
+    // Storm cloud base
+    ctx.globalAlpha = a * 0.88;
+    for (let cl = 0; cl < 4; cl++) {
+      const cOff  = Math.sin(ang * 0.6 + cl * 1.3) * TW * 0.55;
+      const cOffy = Math.cos(ang * 0.4 + cl * 0.9) * 10;
+      const cR    = TW * (1.2 + cl * 0.28);
+      const cGrd  = ctx.createRadialGradient(sx + cOff, sy - TH + cOffy, 0, sx + cOff, sy - TH + cOffy, cR);
+      cGrd.addColorStop(0,    'rgba(28,36,52,0.88)');
+      cGrd.addColorStop(0.45, 'rgba(20,28,44,0.58)');
+      cGrd.addColorStop(1,    'rgba(0,0,0,0)');
+      ctx.fillStyle = cGrd;
+      ctx.beginPath();
+      ctx.ellipse(sx + cOff, sy - TH + cOffy, cR, 44 * tScale + cl * 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Funnel bands (same technique as real tornado)
+    ctx.lineCap = 'round';
+    for (let band = 0; band < 24; band++) {
+      const t     = band / 23;
+      const bandY = sy - TH + t * TH;
+      const bandW = TW * (1 - t) + BW * t;
+      const twist = ang * 2.2 + t * Math.PI * 7;
+      const swayX  = Math.sin(twist)       * bandW * 0.32;
+      const swayX2 = Math.sin(twist + 0.9) * bandW * 0.18;
+
+      ctx.globalAlpha = a * (0.10 + (1 - t) * 0.20);
+      ctx.strokeStyle = `rgba(${(30 + t*40)|0},${(40 + t*35)|0},${(60 + t*30)|0},0.9)`;
+      ctx.lineWidth   = (3.5 + (1 - t) * 5) * tScale;
+      ctx.beginPath();
+      ctx.ellipse(sx + swayX, bandY, bandW, bandW * 0.13, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalAlpha = a * (0.06 + (1 - t) * 0.12);
+      ctx.strokeStyle = 'rgba(140,170,210,0.7)';
+      ctx.lineWidth   = (0.8 + (1 - t) * 1.4) * tScale;
+      ctx.beginPath();
+      ctx.ellipse(sx + swayX2, bandY, bandW * 0.7, bandW * 0.09, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Inner condensation funnel
+    ctx.globalAlpha = a * 0.24;
+    const coneGrd = ctx.createLinearGradient(sx, sy - TH, sx, sy);
+    coneGrd.addColorStop(0,    'rgba(160,185,220,0.85)');
+    coneGrd.addColorStop(0.35, 'rgba(110,140,190,0.60)');
+    coneGrd.addColorStop(0.72, 'rgba(70,100,155,0.35)');
+    coneGrd.addColorStop(1,    'rgba(40,65,110,0.10)');
+    ctx.fillStyle = coneGrd;
+    const ctrl   = Math.sin(ang * 1.1) * 28 * tScale;
+    const innerW = TW * 0.42;
+    ctx.beginPath();
+    ctx.moveTo(sx - innerW, sy - TH);
+    ctx.quadraticCurveTo(sx + ctrl,  sy - TH * 0.48, sx, sy);
+    ctx.quadraticCurveTo(sx - ctrl,  sy - TH * 0.48, sx + innerW, sy - TH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Spiral ropes
+    for (let rope = 0; rope < 3; rope++) {
+      const ropeOff = (rope / 3) * Math.PI * 2;
+      ctx.globalAlpha = a * 0.24;
+      ctx.strokeStyle = 'rgba(180,205,240,0.55)';
+      ctx.lineWidth   = 1.2 * tScale;
+      ctx.beginPath();
+      for (let i = 0; i <= 22; i++) {
+        const t2    = i / 22;
+        const bW    = TW * (1 - t2) + BW * t2;
+        const spAng = ang * 2.5 + ropeOff + t2 * Math.PI * 6;
+        const rx    = sx + Math.cos(spAng) * bW * 0.88;
+        const ry    = sy - TH + t2 * TH + Math.sin(spAng * 0.7) * 4 * tScale;
+        i === 0 ? ctx.moveTo(rx, ry) : ctx.lineTo(rx, ry);
+      }
+      ctx.stroke();
+    }
+
+    // Ground dust + tip glow
+    const dustR = 80 * tScale;
+    ctx.globalAlpha = a * 0.30;
+    const dustGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, dustR);
+    dustGrd.addColorStop(0,    'rgba(100,80,50,0.70)');
+    dustGrd.addColorStop(0.5,  'rgba(60,50,30,0.35)');
+    dustGrd.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.fillStyle = dustGrd;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, dustR, 18 * tScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = a * 0.48;
+    const tipGrd = ctx.createRadialGradient(sx, sy, 0, sx, sy, 24 * tScale);
+    tipGrd.addColorStop(0, 'rgba(200,220,255,0.90)');
+    tipGrd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = tipGrd;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 24 * tScale, 8 * tScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+function drawBgTree(x, y, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#3a2510';
+  ctx.fillRect(-2, -12, 4, 12);
+  const layers = [
+    { y: -10, hw: 13, h: 10 },
+    { y: -18, hw: 10, h:  9 },
+    { y: -25, hw:  7, h:  8 },
+    { y: -31, hw:  4, h:  7 },
+  ];
+  for (const l of layers) {
+    ctx.fillStyle = '#1a3018';
+    ctx.beginPath(); ctx.moveTo(0, l.y - l.h); ctx.lineTo(-l.hw, l.y); ctx.lineTo(l.hw, l.y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#243c22';
+    ctx.beginPath(); ctx.moveTo(0, l.y - l.h + 2); ctx.lineTo(-l.hw + 2, l.y); ctx.lineTo(l.hw - 2, l.y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(210,232,252,0.88)';
+    ctx.beginPath(); ctx.moveTo(0, l.y - l.h); ctx.lineTo(-l.hw * 0.42, l.y - l.h * 0.42); ctx.lineTo(l.hw * 0.42, l.y - l.h * 0.42); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBgPineTrees() {
+  const treeLayers = [
+    { px: 0.16, py: 0.13, baseY: H * 0.875, scaleBase: 0.38, spacing: 52 },
+    { px: 0.24, py: 0.19, baseY: H * 0.900, scaleBase: 0.52, spacing: 40 },
+    { px: 0.42, py: 0.32, baseY: H * 0.920, scaleBase: 0.68, spacing: 30 },
+  ];
+  for (const layer of treeLayers) {
+    const offX = cam.x * layer.px;
+    const offY = cam.y * layer.py;
+    const by   = layer.baseY + offY;
+    const wl   = offX - 80;
+    const wr   = offX + W + 80;
+    const first = Math.floor(wl / layer.spacing) * layer.spacing;
+    for (let wx = first; wx < wr; wx += layer.spacing) {
+      const jitter = Math.sin(wx * 0.137 + layer.px * 17) * layer.spacing * 0.38;
+      const sx = wx + jitter - offX;
+      if (sx < -60 || sx > W + 60) continue;
+      const sc = layer.scaleBase * (0.72 + Math.abs(Math.sin(wx * 0.21)) * 0.56);
+      const ty = by + Math.sin(wx * 0.079) * 4;
+      drawBgTree(sx, ty, sc);
+    }
+  }
+}
+
+function drawDistantTrees() {
+  // Pine tree silhouette layer between near mountains and terrain
+  const offX = cam.x * 0.38;
+  const offY = cam.y * 0.32;
+  const baseY = H * 0.91 + offY;
+  const col = 'rgba(8,18,32,0.82)';
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(-5, H + 10);
+  for (let sx = -5; sx <= W + 30; sx += 10) {
+    const wx = sx + offX;
+    // Combine two frequencies to get irregular tree-line height
+    const treeH = 14 + 9 * Math.abs(Math.sin(wx * 0.028 + 1.1))
+                     + 6 * Math.abs(Math.sin(wx * 0.071 + 3.3))
+                     + 4 * Math.abs(Math.sin(wx * 0.19  + 0.7));
+    // Pointy top every ~18px to simulate individual trees
+    const tipSharp = Math.pow(Math.max(0, Math.sin(wx * 0.35 + 0.5)), 3) * 9;
+    ctx.lineTo(sx, baseY - treeH - tipSharp);
+  }
+  ctx.lineTo(W + 5, H + 10);
+  ctx.closePath();
+  ctx.fill();
+
+  // Subtle snow on top of tree silhouette
+  const snowG = ctx.createLinearGradient(0, baseY - 35, 0, baseY - 10);
+  snowG.addColorStop(0, 'rgba(200,230,255,0.18)');
+  snowG.addColorStop(1, 'rgba(200,230,255,0)');
+  ctx.fillStyle = snowG;
+  ctx.beginPath();
+  ctx.moveTo(-5, H + 10);
+  for (let sx = -5; sx <= W + 30; sx += 10) {
+    const wx = sx + offX;
+    const treeH = 14 + 9 * Math.abs(Math.sin(wx * 0.028 + 1.1))
+                     + 6 * Math.abs(Math.sin(wx * 0.071 + 3.3))
+                     + 4 * Math.abs(Math.sin(wx * 0.19  + 0.7));
+    const tipSharp = Math.pow(Math.max(0, Math.sin(wx * 0.35 + 0.5)), 3) * 9;
+    ctx.lineTo(sx, baseY - treeH - tipSharp);
+  }
+  ctx.lineTo(W + 5, H + 10); ctx.closePath(); ctx.fill();
+}
+
+function drawFog() {
+  const offY = cam.y * 0.10;
+  // Low-lying ground mist — denser in calm weather
+  const fogAlpha = 0.04 + Math.max(0, 0.18 - wind.strength * 0.15);
+  const fogY = H * 0.82 + offY;
+
+  // Main fog band
+  const fg = ctx.createLinearGradient(0, fogY, 0, fogY + 80);
+  fg.addColorStop(0,   `rgba(160,200,240,0)`);
+  fg.addColorStop(0.25,`rgba(160,200,240,${(fogAlpha * 0.7).toFixed(3)})`);
+  fg.addColorStop(0.55,`rgba(140,185,225,${fogAlpha.toFixed(3)})`);
+  fg.addColorStop(1,   `rgba(120,170,215,${(fogAlpha * 0.3).toFixed(3)})`);
+  ctx.fillStyle = fg;
+  ctx.fillRect(0, fogY, W, 80);
+
+  // Wispy upper edge — rolling fog wisps
+  ctx.save();
+  ctx.globalAlpha = fogAlpha * 0.55;
+  for (let i = 0; i < 6; i++) {
+    const wx = ((i * 180 + frame * 0.18 + cam.x * 0.05) % (W + 200) + W + 200) % (W + 200) - 100;
+    const wy = fogY - 4 + Math.sin(frame * 0.009 + i * 1.4) * 6;
+    const wg = ctx.createRadialGradient(wx, wy, 0, wx, wy, 90 + i * 15);
+    wg.addColorStop(0, 'rgba(180,215,245,0.40)');
+    wg.addColorStop(1, 'rgba(180,215,245,0)');
+    ctx.fillStyle = wg;
+    ctx.beginPath(); ctx.ellipse(wx, wy, 90 + i * 15, 22 + i * 4, 0, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 // ── Draw: Mountain silhouette layers ─────────────────────
@@ -939,10 +1313,11 @@ function drawMountainLayer(px, py, color, amp, baseY, seed) {
 }
 
 function drawMountains() {
-  drawMountainLayer(0.04, 0.06, C.mtFar,               235, H * 0.60, 0.0);
-  drawMountainLayer(0.13, 0.14, C.mtMid,               178, H * 0.72, 1.6);
-  drawMountainLayer(0.26, 0.28, C.mtNear,              130, H * 0.86, 3.3);
-  drawMountainLayer(0.42, 0.44, 'rgba(14,28,50,0.72)',  80, H * 0.93, 5.1);
+  drawMountainLayer(0.01, 0.02, 'rgba(18,28,48,0.35)',  310, H * 0.48, 7.3); // ultra-far ghost range
+  drawMountainLayer(0.04, 0.06, C.mtFar,                235, H * 0.60, 0.0);
+  drawMountainLayer(0.13, 0.14, C.mtMid,                178, H * 0.72, 1.6);
+  drawMountainLayer(0.26, 0.28, C.mtNear,               130, H * 0.86, 3.3);
+  drawMountainLayer(0.42, 0.44, 'rgba(14,28,50,0.72)',   80, H * 0.93, 5.1);
 }
 
 // ── Draw: Storm clouds ────────────────────────────────────
@@ -3394,9 +3769,15 @@ function draw() {
     ctx.translate(sx, sy);
   }
   drawSky();
+  drawAurora();
   drawClouds();
   drawMountains();
+  drawBgForest();
+  drawDistantTrees();
+  drawBgPineTrees();
+  drawBgTornados();
   drawAtmosphere();
+  drawFog();
   drawSnow();
   drawWindDebris();
   drawGroundDrift();
