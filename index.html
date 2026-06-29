@@ -407,7 +407,10 @@ function updatePlayer() {
 
   const walkStep = sprinting ? 4 : 7;                  // faster legs when running
   if (Math.abs(player.vx) > 0.5 && player.onGround) {
-    if (++player.walkT >= walkStep) { player.walkT = 0; player.walkF = (player.walkF + 1) % 6; }
+    if (++player.walkT >= walkStep) {
+      player.walkT = 0; player.walkF = (player.walkF + 1) % 6;
+      WindAudio.footstep(sprinting);
+    }
   } else if (player.onGround) { player.walkF = 0; }
 
   // Top collisions
@@ -2378,6 +2381,25 @@ const WindAudio = (() => {
     i1.connect(iMix); i2.connect(iMix); iMix.connect(iLP); iLP.connect(iceGain); iceGain.connect(master);
   }
 
+  function footstep(running) {
+    if (!ac) return;
+    const t = ac.currentTime;
+    // Short crunchy snow burst
+    const len = ac.sampleRate * 0.07;
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const env = Math.pow(1 - i / len, 1.8);
+      d[i] = (Math.random() * 2 - 1) * env;
+    }
+    const s  = ac.createBufferSource(); s.buffer = buf;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 600;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass';  lp.frequency.value = running ? 3200 : 2200;
+    const g  = ac.createGain(); g.gain.value = running ? 0.16 : 0.10;
+    s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(master);
+    s.start(t);
+  }
+
   function thunder() {
     if (!ac) return;
     const t = ac.currentTime;
@@ -2421,7 +2443,7 @@ const WindAudio = (() => {
     prevLightning = lightning;
   }
 
-  return { init, update };
+  return { init, update, footstep };
 })();
 
 // ── Wind Challenge minigame ───────────────────────────────
