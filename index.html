@@ -1384,267 +1384,610 @@ function drawHouse(h) {
   const isMetal = h.type === 'metal';
 
   if (isBunker) {
-    // ── Fortress Bunker ───────────────────────────────
-    // Warm glow when occupied
+    // ══════════════════════════════════════════════════
+    // ── FORTRESS BUNKER ───────────────────────────────
+    // ══════════════════════════════════════════════════
+
+    // Occupied warm glow
     if (warm) {
-      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 2.2);
-      grd.addColorStop(0, 'rgba(255,180,60,0.22)');
+      const grd = ctx.createRadialGradient(0, 10, 0, 0, 10, hw * 2.6);
+      grd.addColorStop(0, 'rgba(255,180,60,0.24)');
       grd.addColorStop(1, 'rgba(255,180,60,0)');
       ctx.fillStyle = grd;
-      ctx.fillRect(-hw * 2.2, -RH - BH, hw * 4.4, RH + BH * 2);
+      ctx.fillRect(-hw * 2.6, -BH, hw * 5.2, BH * 3);
     }
 
-    // Sandbag base
-    ctx.fillStyle = '#5a4a2a';
-    ctx.fillRect(-hw - 6, BH/2 - 14, h.w + 12, 16);
-    for (let sb = 0; sb < Math.floor(h.w / 18) + 1; sb++) {
-      ctx.fillStyle = sb % 2 === 0 ? '#6a5a34' : '#504228';
-      ctx.beginPath();
-      ctx.ellipse(-hw + sb * 18 + 9 - 6, BH/2 - 8, 10, 7, 0, 0, Math.PI * 2);
-      ctx.fill();
+    // ── Ground foundation slab ────────────────────────
+    ctx.fillStyle = '#26241e';
+    ctx.fillRect(-hw - 8, BH/2, h.w + 16, 10);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(-hw - 8, BH/2 + 8, h.w + 16, 3);
+
+    // ── Corner buttresses (thick reinforced pillars) ──
+    for (const side of [-1, 1]) {
+      const bx = side * (hw + 2);
+      const bw = side * 18;
+      ctx.fillStyle = '#2a2820';
+      ctx.fillRect(bx, -BH/2 - 4, bw, BH + 14);
+      // Buttress vertical groove
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(bx + (side > 0 ? bw - 4 : 0), -BH/2 - 4, 4, BH + 14);
+      // Buttress top cap
+      ctx.fillStyle = '#1e1c16';
+      ctx.fillRect(bx, -BH/2 - 10, bw, 8);
     }
 
-    // Massive concrete walls
-    const wallGrd = ctx.createLinearGradient(-hw, -BH/2, hw, -BH/2);
-    wallGrd.addColorStop(0,   '#3a3830');
-    wallGrd.addColorStop(0.5, '#4a4840');
-    wallGrd.addColorStop(1,   '#2e2c26');
-    ctx.fillStyle = wallGrd;
-    ctx.fillRect(-hw, -BH/2, h.w, BH);
-
-    // Horizontal concrete seams
-    ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 1.5;
-    for (let sl = 1; sl < 5; sl++) {
-      const sy2 = -BH/2 + sl * (BH / 5);
-      ctx.beginPath(); ctx.moveTo(-hw, sy2); ctx.lineTo(hw, sy2); ctx.stroke();
-    }
-    // Vertical seams
-    for (let vl = 1; vl < 4; vl++) {
-      const vx2 = -hw + vl * (h.w / 4);
-      ctx.beginPath(); ctx.moveTo(vx2, -BH/2); ctx.lineTo(vx2, BH/2 - 14); ctx.stroke();
-    }
-
-    // Left blast wall
-    ctx.fillStyle = '#2e2c26';
-    ctx.fillRect(-hw - 14, -BH/2 + 10, 14, BH - 24);
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
-    ctx.fillRect(-hw - 14, -BH/2 + 10, 4, BH - 24);
-
-    // Right blast wall
-    ctx.fillStyle = '#2e2c26';
-    ctx.fillRect(hw, -BH/2 + 10, 14, BH - 24);
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.fillRect(hw + 8, -BH/2 + 10, 6, BH - 24);
-
-    // Flat armoured roof
-    ctx.fillStyle = '#1e1c18';
-    ctx.fillRect(-hw - 4, -BH/2 - RH, h.w + 8, RH + 4);
-    // Roof edge ridge
-    ctx.strokeStyle = '#5a5848'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-hw - 4, -BH/2); ctx.lineTo(hw + 4, -BH/2); ctx.stroke();
-    // Snow on roof
-    ctx.fillStyle = 'rgba(210,235,252,0.60)';
-    ctx.fillRect(-hw - 4, -BH/2 - RH, h.w + 8, 6);
-    // Rooftop antenna
-    ctx.strokeStyle = '#6a6860'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-hw * 0.5, -BH/2 - RH); ctx.lineTo(-hw * 0.5, -BH/2 - RH - 22); ctx.stroke();
-    ctx.fillStyle = '#e84040'; ctx.beginPath(); ctx.arc(-hw * 0.5, -BH/2 - RH - 24, 3, 0, Math.PI * 2); ctx.fill();
-    // Vent pipes
-    for (const vp of [hw * 0.2, hw * 0.55]) {
-      ctx.fillStyle = '#3a3830';
-      ctx.fillRect(vp - 5, -BH/2 - RH - 8, 10, 12);
-      ctx.fillStyle = '#1e1c18';
-      ctx.fillRect(vp - 7, -BH/2 - RH - 12, 14, 6);
-    }
-
-    // Vault door (center, massive)
-    const dw = 36, dh = 58;
-    ctx.fillStyle = '#1a1814';
-    ctx.fillRect(-dw/2, BH/2 - dh - 14, dw, dh);
-    ctx.strokeStyle = '#5a5040'; ctx.lineWidth = 3;
-    ctx.strokeRect(-dw/2, BH/2 - dh - 14, dw, dh);
-    // Door bolts
-    ctx.fillStyle = '#706858';
-    for (const bx2 of [-dw/2 + 5, dw/2 - 5]) {
-      for (const by3 of [BH/2 - dh - 8, BH/2 - dh/2 - 14, BH/2 - 22]) {
-        ctx.beginPath(); ctx.arc(bx2, by3, 3.5, 0, Math.PI * 2); ctx.fill();
+    // ── Sandbag wall (staggered rows) ────────────────
+    const sbW = 17, sbH = 10;
+    for (let row = 0; row < 2; row++) {
+      const rowY = BH/2 - 12 - row * (sbH - 2);
+      const offset = row % 2 === 0 ? 0 : sbW / 2;
+      const count = Math.ceil(h.w / sbW) + 1;
+      for (let sb = 0; sb < count; sb++) {
+        const sbX = -hw + sb * sbW - offset;
+        if (sbX + sbW < -hw || sbX > hw) continue;
+        ctx.fillStyle = row === 0 ? (sb%2===0 ? '#6a5830' : '#5a4a28') : (sb%2===0 ? '#5e5028' : '#504424');
+        ctx.beginPath();
+        ctx.ellipse(sbX + sbW/2, rowY + sbH/2, sbW/2 - 1, sbH/2 - 0.5, 0, 0, Math.PI*2);
+        ctx.fill();
+        // Seam shadow
+        ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(sbX + 1, rowY + sbH/2); ctx.lineTo(sbX + sbW - 1, rowY + sbH/2); ctx.stroke();
       }
     }
-    // Wheel lock
-    ctx.strokeStyle = '#908878'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(0, BH/2 - dh/2 - 14, 8, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-8, BH/2 - dh/2 - 14); ctx.lineTo(8, BH/2 - dh/2 - 14); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, BH/2 - dh/2 - 22); ctx.lineTo(0, BH/2 - dh/2 - 6); ctx.stroke();
 
-    // Tiny arrow-slit windows
-    ctx.fillStyle = warm ? '#ffcc44' : '#080806';
-    for (const wx2 of [-hw + 16, -hw + 44, hw - 44, hw - 16]) {
-      ctx.fillRect(wx2 - 3, -BH/2 + 20, 6, 14);
-      ctx.strokeStyle = '#5a5040'; ctx.lineWidth = 1;
-      ctx.strokeRect(wx2 - 3, -BH/2 + 20, 6, 14);
+    // ── Massive concrete walls ────────────────────────
+    const wallGrd = ctx.createLinearGradient(-hw, 0, hw, 0);
+    wallGrd.addColorStop(0,    '#3e3c34');
+    wallGrd.addColorStop(0.08, '#4a4840');
+    wallGrd.addColorStop(0.50, '#46443c');
+    wallGrd.addColorStop(0.92, '#3a3830');
+    wallGrd.addColorStop(1,    '#2c2a24');
+    ctx.fillStyle = wallGrd;
+    ctx.fillRect(-hw, -BH/2, h.w, BH - 20);
+
+    // Concrete block horizontal seams (5 rows)
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.4;
+    for (let sl = 1; sl < 5; sl++) {
+      const sy2 = -BH/2 + sl * ((BH - 20) / 5);
+      ctx.beginPath(); ctx.moveTo(-hw, sy2); ctx.lineTo(hw, sy2); ctx.stroke();
     }
+    // Vertical block seams (staggered per row)
+    for (let sl = 0; sl < 5; sl++) {
+      const rowTop = -BH/2 + sl * ((BH - 20) / 5);
+      const cols = sl % 2 === 0 ? 3 : 4;
+      for (let vc = 1; vc < cols; vc++) {
+        const vx2 = -hw + vc * (h.w / cols);
+        ctx.beginPath(); ctx.moveTo(vx2, rowTop); ctx.lineTo(vx2, rowTop + (BH - 20)/5); ctx.stroke();
+      }
+    }
+    // Surface weathering (slightly darker patches)
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(-hw + 20, -BH/2 + 8, 22, 18);
+    ctx.fillRect(hw - 38, -BH/2 + 30, 16, 24);
+
+    // Left/right wall light bevel
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillRect(-hw, -BH/2, 5, BH - 20);
+
+    // ── Flat armoured roof ────────────────────────────
+    ctx.fillStyle = '#1c1a14';
+    ctx.fillRect(-hw - 6, -BH/2 - RH, h.w + 12, RH + 6);
+    // Roof top surface — slight texture
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+    for (let ri = 0; ri < 4; ri++) {
+      const ry2 = -BH/2 - RH + ri * 7;
+      ctx.beginPath(); ctx.moveTo(-hw - 4, ry2); ctx.lineTo(hw + 4, ry2); ctx.stroke();
+    }
+    // Roof front parapet (crenellations)
+    const crenW = 14, crenH = 12, crenGap = 10;
+    const crenCount = Math.floor(h.w / (crenW + crenGap));
+    const crenStart = -((crenCount * (crenW + crenGap) - crenGap) / 2);
+    for (let ci = 0; ci < crenCount; ci++) {
+      const cx2 = crenStart + ci * (crenW + crenGap);
+      ctx.fillStyle = '#1c1a14';
+      ctx.fillRect(cx2, -BH/2 - RH - crenH, crenW, crenH);
+      // Crenellation snow
+      ctx.fillStyle = 'rgba(210,235,252,0.55)';
+      ctx.fillRect(cx2, -BH/2 - RH - crenH, crenW, 4);
+    }
+    // Roof edge ridge
+    ctx.strokeStyle = '#504e44'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-hw - 6, -BH/2); ctx.lineTo(hw + 6, -BH/2); ctx.stroke();
+    // Snow on flat roof
+    ctx.fillStyle = 'rgba(215,238,255,0.62)';
+    ctx.fillRect(-hw - 6, -BH/2 - RH, h.w + 12, 5);
+
+    // ── Rooftop equipment ─────────────────────────────
+    // Main antenna mast
+    ctx.strokeStyle = '#585650'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-hw * 0.55, -BH/2 - RH - crenH); ctx.lineTo(-hw * 0.55, -BH/2 - RH - crenH - 28); ctx.stroke();
+    // Cross-arm
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-hw * 0.55 - 10, -BH/2 - RH - crenH - 22); ctx.lineTo(-hw * 0.55 + 10, -BH/2 - RH - crenH - 22); ctx.stroke();
+    // Blinking red light
+    const blinkOn = Math.sin(frame * 0.06) > 0;
+    ctx.fillStyle = blinkOn ? '#ff3030' : '#7a1818';
+    ctx.beginPath(); ctx.arc(-hw * 0.55, -BH/2 - RH - crenH - 30, 3.5, 0, Math.PI*2); ctx.fill();
+    // Second small antenna
+    ctx.strokeStyle = '#484640'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(hw * 0.4, -BH/2 - RH - crenH); ctx.lineTo(hw * 0.4, -BH/2 - RH - crenH - 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hw * 0.4 - 6, -BH/2 - RH - crenH - 12); ctx.lineTo(hw * 0.4 + 6, -BH/2 - RH - crenH - 12); ctx.stroke();
+
+    // Vent pipes
+    for (const vp of [hw * 0.15, hw * 0.55]) {
+      ctx.fillStyle = '#36342c';
+      ctx.fillRect(vp - 5, -BH/2 - RH - 10, 10, 14);
+      ctx.fillStyle = '#1e1c16';
+      ctx.fillRect(vp - 7, -BH/2 - RH - 15, 14, 7);
+      // Vent cap sheen
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(vp - 7, -BH/2 - RH - 15, 5, 7);
+    }
+
+    // ── Vault door (center, massive) ──────────────────
+    const dw = 38, dh = 60;
+    const dTop = BH/2 - dh - 20;
+    // Door frame (thick, recessed)
+    ctx.fillStyle = '#141210';
+    ctx.fillRect(-dw/2 - 4, dTop - 4, dw + 8, dh + 8);
+    // Door face
+    const doorGrd = ctx.createLinearGradient(-dw/2, dTop, dw/2, dTop);
+    doorGrd.addColorStop(0,   '#1e1c18');
+    doorGrd.addColorStop(0.3, '#2a2820');
+    doorGrd.addColorStop(1,   '#141210');
+    ctx.fillStyle = doorGrd;
+    ctx.fillRect(-dw/2, dTop, dw, dh);
+    // Door outer rim
+    ctx.strokeStyle = '#5a5040'; ctx.lineWidth = 3;
+    ctx.strokeRect(-dw/2, dTop, dw, dh);
+    // Inner panel
+    ctx.strokeStyle = '#3a3428'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(-dw/2 + 5, dTop + 5, dw - 10, dh - 10);
+    // Bolt pattern (3×2 grid)
+    ctx.fillStyle = '#706858';
+    for (const bx2 of [-dw/2 + 6, dw/2 - 6]) {
+      for (const by3 of [dTop + 10, dTop + dh/2, dTop + dh - 10]) {
+        ctx.beginPath(); ctx.arc(bx2, by3, 4, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#3a3020'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(bx2, by3, 4, 0, Math.PI*2); ctx.stroke();
+      }
+    }
+    // Wheel lock (spoked)
+    const wx2 = 0, wy2 = dTop + dh/2;
+    ctx.strokeStyle = '#908878'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(wx2, wy2, 10, 0, Math.PI*2); ctx.stroke();
+    ctx.lineWidth = 1.5;
+    for (let sp = 0; sp < 6; sp++) {
+      const ang = sp * Math.PI / 3;
+      ctx.beginPath(); ctx.moveTo(wx2, wy2); ctx.lineTo(wx2 + Math.cos(ang)*10, wy2 + Math.sin(ang)*10); ctx.stroke();
+    }
+    ctx.fillStyle = '#706858'; ctx.beginPath(); ctx.arc(wx2, wy2, 3, 0, Math.PI*2); ctx.fill();
+
+    // ── Arrow-slit windows (4x, iron-barred) ─────────
+    const slitPositions = [-hw + 18, -hw + 48, hw - 48, hw - 18];
+    for (const sx2 of slitPositions) {
+      // Recess shadow
+      ctx.fillStyle = '#0e0c0a';
+      ctx.fillRect(sx2 - 5, -BH/2 + 16, 10, 20);
+      // Light / dark interior
+      ctx.fillStyle = warm ? '#cc9930' : '#080806';
+      ctx.fillRect(sx2 - 3, -BH/2 + 18, 6, 16);
+      // Iron bars
+      ctx.strokeStyle = '#3a3428'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(sx2, -BH/2 + 18); ctx.lineTo(sx2, -BH/2 + 34); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx2 - 3, -BH/2 + 26); ctx.lineTo(sx2 + 3, -BH/2 + 26); ctx.stroke();
+    }
+    // Warm glow from slits
     if (warm) {
-      const wg = ctx.createRadialGradient(0, -BH/2 + 27, 0, 0, -BH/2 + 27, 55);
-      wg.addColorStop(0, 'rgba(255,200,60,0.22)'); wg.addColorStop(1, 'rgba(255,200,60,0)');
-      ctx.fillStyle = wg; ctx.fillRect(-hw, -BH/2, h.w, BH);
+      for (const sx2 of slitPositions) {
+        const wg = ctx.createRadialGradient(sx2, -BH/2 + 26, 0, sx2, -BH/2 + 26, 32);
+        wg.addColorStop(0, 'rgba(255,180,40,0.22)'); wg.addColorStop(1, 'rgba(255,180,40,0)');
+        ctx.fillStyle = wg; ctx.fillRect(sx2 - 32, -BH/2, 64, BH);
+      }
     }
 
   } else if (isMetal) {
-    // ── Metal bunker ──────────────────────────────────
-    // Subtle cold glow when occupied
+    // ══════════════════════════════════════════════════
+    // ── METAL BUNKER ──────────────────────────────────
+    // ══════════════════════════════════════════════════
+
+    // Occupied cold glow
     if (warm) {
-      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 1.8);
-      grd.addColorStop(0, 'rgba(140,180,220,0.18)');
-      grd.addColorStop(1, 'rgba(140,180,220,0)');
-      ctx.fillStyle = grd;
-      ctx.fillRect(-hw * 2, -RH - BH, hw * 4, RH + BH * 2);
-    }
-
-    // Flat angular roof (low pitch — sheds snow, storm-proof)
-    ctx.fillStyle = '#1e2830';
-    ctx.beginPath();
-    ctx.moveTo(-hw - 3, -BH/2);
-    ctx.lineTo(-hw * 0.3, -(RH * 0.55 + BH/2));
-    ctx.lineTo( hw * 0.3, -(RH * 0.55 + BH/2));
-    ctx.lineTo( hw + 3, -BH/2);
-    ctx.closePath();
-    ctx.fill();
-    // Roof edge lip
-    ctx.strokeStyle = '#3a4a58'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-hw - 3, -BH/2); ctx.lineTo(hw + 3, -BH/2); ctx.stroke();
-    // Snow on roof (less — angular sheds it)
-    ctx.fillStyle = 'rgba(210,235,252,0.55)';
-    ctx.fillRect(-hw - 3, -BH/2 - 3, h.w + 6, 5);
-
-    // Body — corrugated steel
-    ctx.fillStyle = '#2e3d4e';
-    ctx.fillRect(-hw, -BH/2, h.w, BH);
-    // Corrugated lines (horizontal ridges)
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1;
-    for (let rl = 0; rl < 6; rl++) {
-      const ry = -BH/2 + (rl + 0.5) * (BH / 6);
-      ctx.beginPath(); ctx.moveTo(-hw, ry); ctx.lineTo(hw, ry); ctx.stroke();
-    }
-    // Metallic sheen (left bevel)
-    ctx.fillStyle = 'rgba(180,210,240,0.08)';
-    ctx.fillRect(-hw, -BH/2, 8, BH);
-    // Rivet dots
-    ctx.fillStyle = 'rgba(100,140,170,0.55)';
-    for (const rvx of [-hw + 4, hw - 4]) {
-      for (let rvy = -BH/2 + 8; rvy < BH/2; rvy += 16) {
-        ctx.beginPath(); ctx.arc(rvx, rvy, 2, 0, Math.PI*2); ctx.fill();
-      }
-    }
-    // Side shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.fillRect(hw - 12, -BH/2, 12, BH);
-
-    // Heavy steel door (center, reinforced)
-    ctx.fillStyle = '#1a252e';
-    const dw = 22, dh = 38;
-    ctx.fillRect(-dw/2, BH/2 - dh, dw, dh);
-    ctx.strokeStyle = '#3a5060'; ctx.lineWidth = 2;
-    ctx.strokeRect(-dw/2, BH/2 - dh, dw, dh);
-    // Door hinges
-    ctx.fillStyle = '#506070';
-    ctx.fillRect(-dw/2 + 1, BH/2 - dh + 6, 4, 5);
-    ctx.fillRect(-dw/2 + 1, BH/2 - 12, 4, 5);
-    // Wheel-lock handle
-    ctx.strokeStyle = '#708090'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(dw/2 - 5, BH/2 - dh/2, 5, 0, Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(dw/2 - 10, BH/2 - dh/2); ctx.lineTo(dw/2, BH/2 - dh/2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(dw/2 - 5, BH/2 - dh/2 - 5); ctx.lineTo(dw/2 - 5, BH/2 - dh/2 + 5); ctx.stroke();
-
-    // Slot windows (narrow horizontal, bulletproof-looking)
-    ctx.fillStyle = warm ? '#6ab0d0' : '#0c1820';
-    ctx.fillRect(-hw + 10, -BH/2 + 14, 22, 8);
-    ctx.fillRect( hw - 32, -BH/2 + 14, 22, 8);
-    ctx.strokeStyle = '#3a5060'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(-hw + 10, -BH/2 + 14, 22, 8);
-    ctx.strokeRect( hw - 32, -BH/2 + 14, 22, 8);
-
-    // Vent pipe (instead of chimney)
-    ctx.fillStyle = '#2a3a48';
-    ctx.fillRect(-hw * 0.4 - 4, -(RH * 0.55 + BH/2) - 10, 8, 14);
-    ctx.fillStyle = '#1a2a38';
-    ctx.fillRect(-hw * 0.4 - 6, -(RH * 0.55 + BH/2) - 14, 12, 6);
-
-  } else {
-    // ── Normal wooden house ───────────────────────────
-    if (warm) {
-      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 2.2);
-      grd.addColorStop(0, 'rgba(255,160,40,0.28)');
-      grd.addColorStop(1, 'rgba(255,160,40,0)');
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 2.0);
+      grd.addColorStop(0, 'rgba(140,200,240,0.20)');
+      grd.addColorStop(1, 'rgba(140,200,240,0)');
       ctx.fillStyle = grd;
       ctx.fillRect(-hw * 2.2, -RH - BH, hw * 4.4, RH + BH * 2);
     }
 
-    // Chimney
-    ctx.fillStyle = '#3a2818';
-    ctx.fillRect(hw * 0.22, -(RH + BH/2) - 20, 13, RH * 0.56);
+    // ── Foundation ────────────────────────────────────
+    ctx.fillStyle = '#1e2428';
+    ctx.fillRect(-hw - 4, BH/2, h.w + 8, 8);
 
-    // Roof
-    ctx.fillStyle = '#2e2014';
+    // ── Low-pitch angular roof ────────────────────────
+    const roofPeak = -(RH * 0.5 + BH/2);
+    ctx.fillStyle = '#1a2430';
     ctx.beginPath();
-    ctx.moveTo(-hw - 6, -BH/2); ctx.lineTo(0, -(RH + BH/2)); ctx.lineTo(hw + 6, -BH/2);
+    ctx.moveTo(-hw - 4, -BH/2);
+    ctx.lineTo(-hw * 0.25, roofPeak);
+    ctx.lineTo( hw * 0.25, roofPeak);
+    ctx.lineTo( hw + 4, -BH/2);
     ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-hw - 4, -BH/2); ctx.lineTo(0, -(RH + BH/2) + 3); ctx.lineTo(hw + 4, -BH/2);
-    ctx.stroke();
+    // Roof panels (corrugated ridgelines)
+    ctx.strokeStyle = 'rgba(180,220,255,0.09)'; ctx.lineWidth = 1;
+    for (let rp = 1; rp < 4; rp++) {
+      const t2 = rp / 4;
+      const rx1 = -hw - 4 + t2 * (hw + 4 - hw * 0.25);
+      const ry1 = -BH/2 + t2 * (roofPeak - (-BH/2));
+      const rx2 =  hw + 4 - t2 * (hw + 4 - hw * 0.25);
+      ctx.beginPath(); ctx.moveTo(rx1, ry1); ctx.lineTo(rx2, ry1); ctx.stroke();
+    }
+    // Roof edge lip / gutter
+    ctx.strokeStyle = '#2e4050'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-hw - 4, -BH/2); ctx.lineTo(hw + 4, -BH/2); ctx.stroke();
+    // Snow drifted on roof (more on left side, wind-deposited)
+    ctx.fillStyle = 'rgba(215,238,255,0.58)';
+    ctx.fillRect(-hw - 4, -BH/2 - 4, h.w + 8, 5);
+    // Icicles hanging from roof edge
+    for (let ic = 0; ic < 7; ic++) {
+      const ix = -hw + 6 + ic * (h.w - 6) / 6;
+      const ilen = 6 + Math.abs(Math.sin(ic * 2.1)) * 12;
+      const ig = ctx.createLinearGradient(ix, -BH/2, ix, -BH/2 + ilen);
+      ig.addColorStop(0,   'rgba(190,230,255,0.85)');
+      ig.addColorStop(0.6, 'rgba(210,240,255,0.50)');
+      ig.addColorStop(1,   'rgba(220,245,255,0)');
+      ctx.fillStyle = ig;
+      ctx.beginPath();
+      ctx.moveTo(ix - 2, -BH/2);
+      ctx.lineTo(ix + 2, -BH/2);
+      ctx.lineTo(ix, -BH/2 + ilen);
+      ctx.closePath(); ctx.fill();
+    }
 
-    // Snow on roof
-    ctx.fillStyle = '#ddeeff';
-    ctx.beginPath();
-    ctx.moveTo(-hw - 6, -BH/2); ctx.lineTo(0, -(RH + BH/2));
-    ctx.lineTo(hw + 6, -BH/2); ctx.lineTo(-hw - 6, -BH/2 + 7);
-    ctx.closePath(); ctx.fill();
-
-    // Body
-    ctx.fillStyle = '#4e3828';
+    // ── Body — corrugated steel panels ───────────────
+    ctx.fillStyle = '#2a3a4a';
     ctx.fillRect(-hw, -BH/2, h.w, BH);
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+
+    // Corrugated horizontal ridges (pressed steel look)
+    for (let rl = 0; rl < 7; rl++) {
+      const ry = -BH/2 + (rl + 0.5) * (BH / 7);
+      // Light top edge of ridge
+      ctx.strokeStyle = 'rgba(220,240,255,0.11)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-hw, ry - 0.5); ctx.lineTo(hw, ry - 0.5); ctx.stroke();
+      // Dark bottom edge of ridge
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-hw, ry + 1.5); ctx.lineTo(hw, ry + 1.5); ctx.stroke();
+    }
+
+    // Panel seams (vertical, 3 panels)
+    ctx.strokeStyle = 'rgba(0,0,0,0.32)'; ctx.lineWidth = 1.5;
+    for (const px2 of [-hw * 0.3, hw * 0.3]) {
+      ctx.beginPath(); ctx.moveTo(px2, -BH/2); ctx.lineTo(px2, BH/2); ctx.stroke();
+    }
+
+    // Rivet rows (left and right edge columns, plus panel joins)
+    ctx.fillStyle = 'rgba(120,160,195,0.60)';
+    for (const rvx of [-hw + 5, hw - 5, -hw * 0.3 - 1, hw * 0.3 + 1]) {
+      for (let rvy = -BH/2 + 7; rvy < BH/2; rvy += 13) {
+        ctx.beginPath(); ctx.arc(rvx, rvy, 2, 0, Math.PI*2); ctx.fill();
+        // Rivet shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath(); ctx.arc(rvx + 0.5, rvy + 0.5, 1.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(120,160,195,0.60)';
+      }
+    }
+
+    // Rust streaks (diagonal stains running down from rivets)
+    ctx.strokeStyle = 'rgba(110,55,20,0.28)'; ctx.lineWidth = 1.2;
+    for (const rx2 of [-hw + 5, hw * 0.3 + 1]) {
+      ctx.beginPath(); ctx.moveTo(rx2, -BH/2 + 18); ctx.lineTo(rx2 + 3, -BH/2 + 38); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx2, -BH/2 + 44); ctx.lineTo(rx2 + 2, -BH/2 + 60); ctx.stroke();
+    }
+
+    // Metallic sheen — left face lighter
+    ctx.fillStyle = 'rgba(180,218,248,0.07)';
+    ctx.fillRect(-hw, -BH/2, 9, BH);
+    // Right face darker
+    ctx.fillStyle = 'rgba(0,0,0,0.20)';
     ctx.fillRect(hw - 14, -BH/2, 14, BH);
 
-    // Door
-    ctx.fillStyle = '#1e1008';
-    const dw = 22, dh = 36;
-    ctx.fillRect(-dw/2, BH/2 - dh, dw, dh);
-    ctx.strokeStyle = '#6a4828'; ctx.lineWidth = 2;
-    ctx.strokeRect(-dw/2, BH/2 - dh, dw, dh);
-    ctx.fillStyle = '#c8a060';
-    ctx.beginPath(); ctx.arc(dw/2 - 5, BH/2 - dh/2, 3, 0, Math.PI*2); ctx.fill();
+    // ── Reinforcement brackets at corners ─────────────
+    ctx.strokeStyle = '#3a5060'; ctx.lineWidth = 2;
+    for (const side of [-1, 1]) {
+      const bx = side * hw;
+      ctx.beginPath(); ctx.moveTo(bx, -BH/2 + 4); ctx.lineTo(bx + side * -10, -BH/2 + 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx, -BH/2 + 4); ctx.lineTo(bx, -BH/2 + 14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx, BH/2 - 4); ctx.lineTo(bx + side * -10, BH/2 - 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx, BH/2 - 4); ctx.lineTo(bx, BH/2 - 14); ctx.stroke();
+    }
 
-    // Windows
-    ctx.fillStyle = warm ? '#ffcc44' : '#1e3048';
-    ctx.fillRect(-hw + 10, -BH/2 + 14, 20, 16);
-    ctx.fillRect( hw - 30, -BH/2 + 14, 20, 16);
-    ctx.strokeStyle = warm ? 'rgba(255,200,80,0.6)' : 'rgba(255,255,255,0.12)';
+    // ── Heavy steel door (reinforced, center) ─────────
+    const dw = 24, dh = 40;
+    const dTop = BH/2 - dh;
+    // Door recess shadow
+    ctx.fillStyle = '#0e161e';
+    ctx.fillRect(-dw/2 - 3, dTop - 3, dw + 6, dh + 3);
+    // Door face with gradient
+    const dGrd = ctx.createLinearGradient(-dw/2, dTop, dw/2, dTop);
+    dGrd.addColorStop(0,   '#1e2c38'); dGrd.addColorStop(0.4, '#253444'); dGrd.addColorStop(1, '#161e28');
+    ctx.fillStyle = dGrd; ctx.fillRect(-dw/2, dTop, dw, dh);
+    ctx.strokeStyle = '#304050'; ctx.lineWidth = 2;
+    ctx.strokeRect(-dw/2, dTop, dw, dh);
+    // Inner reinforcement plate
+    ctx.strokeStyle = '#253040'; ctx.lineWidth = 1;
+    ctx.strokeRect(-dw/2 + 4, dTop + 4, dw - 8, dh - 8);
+    // Warning stripe at bottom of door
+    ctx.save();
+    ctx.beginPath(); ctx.rect(-dw/2, dTop + dh - 9, dw, 9); ctx.clip();
+    const stripeW = 5;
+    for (let si = 0; si < 8; si++) {
+      ctx.fillStyle = si % 2 === 0 ? 'rgba(220,160,20,0.55)' : 'rgba(20,30,40,0.55)';
+      ctx.fillRect(-dw/2 + si * stripeW - 2, dTop + dh - 9, stripeW, 9);
+    }
+    ctx.restore();
+    // Door hinges (left side, 2x)
+    ctx.fillStyle = '#507090';
+    ctx.fillRect(-dw/2 + 1, dTop + 6, 5, 7);
+    ctx.fillRect(-dw/2 + 1, dTop + dh - 13, 5, 7);
+    // Wheel-lock handle
+    ctx.strokeStyle = '#6090a8'; ctx.lineWidth = 2;
+    const wlx = dw/2 - 7, wly = dTop + dh/2;
+    ctx.beginPath(); ctx.arc(wlx, wly, 6, 0, Math.PI*2); ctx.stroke();
     ctx.lineWidth = 1.5;
-    for (const wx of [-hw + 10, hw - 30]) {
-      ctx.beginPath(); ctx.moveTo(wx + 10, -BH/2 + 14); ctx.lineTo(wx + 10, -BH/2 + 30); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(wx, -BH/2 + 22); ctx.lineTo(wx + 20, -BH/2 + 22); ctx.stroke();
-    }
-    if (warm) {
-      const wg = ctx.createRadialGradient(0, -BH/2 + 22, 0, 0, -BH/2 + 22, 40);
-      wg.addColorStop(0, 'rgba(255,200,60,0.30)'); wg.addColorStop(1, 'rgba(255,200,60,0)');
-      ctx.fillStyle = wg; ctx.fillRect(-hw, -BH/2, h.w, BH);
+    for (let sp = 0; sp < 4; sp++) {
+      const ang = sp * Math.PI / 2;
+      ctx.beginPath(); ctx.moveTo(wlx, wly); ctx.lineTo(wlx + Math.cos(ang)*6, wly + Math.sin(ang)*6); ctx.stroke();
     }
 
-    // Chimney smoke — more puffs, blown by wind
-    const smokeDir = wind.force * -18;
-    for (let i = 0; i < 5; i++) {
-      const t = ((frame * 0.013 + i * 0.22) % 1);
-      const drift = smokeDir * t;
-      ctx.globalAlpha = h.alpha * (0.38 - t * 0.38);
-      const sg = t < 0.4 ? '#b8b8b8' : '#949494';
-      ctx.fillStyle = sg;
+    // ── Slot windows (bulletproof, 2x) ───────────────
+    for (const wx3 of [-hw + 10, hw - 34]) {
+      // Recess
+      ctx.fillStyle = '#0a1218';
+      ctx.fillRect(wx3 - 2, -BH/2 + 12, 26, 12);
+      // Glass
+      ctx.fillStyle = warm ? '#5ab0d8' : '#0c1a24';
+      ctx.fillRect(wx3, -BH/2 + 14, 22, 8);
+      // Frame
+      ctx.strokeStyle = '#304858'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(wx3, -BH/2 + 14, 22, 8);
+      // Vertical divider bar
+      ctx.strokeStyle = '#284050'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(wx3 + 11, -BH/2 + 14); ctx.lineTo(wx3 + 11, -BH/2 + 22); ctx.stroke();
+      // Glare
+      ctx.fillStyle = 'rgba(200,240,255,0.12)';
+      ctx.fillRect(wx3 + 1, -BH/2 + 15, 8, 2);
+      // Warm light spill
+      if (warm) {
+        const wg = ctx.createRadialGradient(wx3 + 11, -BH/2 + 18, 0, wx3 + 11, -BH/2 + 18, 28);
+        wg.addColorStop(0, 'rgba(100,200,255,0.20)'); wg.addColorStop(1, 'rgba(100,200,255,0)');
+        ctx.fillStyle = wg; ctx.fillRect(wx3 - 28, -BH/2, 80, 40);
+      }
+    }
+
+    // ── Vent pipe (roof, left of center) ─────────────
+    ctx.fillStyle = '#243040';
+    ctx.fillRect(-hw * 0.4 - 4, roofPeak - 12, 8, 16);
+    // Vent cap
+    ctx.fillStyle = '#18242e';
+    ctx.fillRect(-hw * 0.4 - 7, roofPeak - 17, 14, 7);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(-hw * 0.4 - 7, roofPeak - 17, 5, 7);
+
+  } else {
+    // ══════════════════════════════════════════════════
+    // ── NORMAL WOODEN HOUSE ───────────────────────────
+    // ══════════════════════════════════════════════════
+
+    // Occupied warm glow
+    if (warm) {
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 2.4);
+      grd.addColorStop(0, 'rgba(255,160,40,0.30)');
+      grd.addColorStop(1, 'rgba(255,160,40,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(-hw * 2.4, -RH - BH, hw * 4.8, RH + BH * 2);
+    }
+
+    // ── Stone foundation ──────────────────────────────
+    ctx.fillStyle = '#2e2820';
+    ctx.fillRect(-hw - 2, BH/2 - 6, h.w + 4, 10);
+    ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 1;
+    for (let fi = 1; fi < 4; fi++) {
+      ctx.beginPath(); ctx.moveTo(-hw + fi * (h.w / 4), BH/2 - 6); ctx.lineTo(-hw + fi * (h.w / 4), BH/2 + 4); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(-hw - 2, BH/2 - 1); ctx.lineTo(hw + 2, BH/2 - 1); ctx.stroke();
+
+    // ── Chimney (behind roof, drawn first) ────────────
+    const chimneyX = hw * 0.28;
+    // Stone chimney body
+    ctx.fillStyle = '#3e2e1e';
+    ctx.fillRect(chimneyX, -(RH * 0.85 + BH/2) - 22, 14, RH * 0.7 + 6);
+    // Chimney mortar lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.8;
+    for (let cm = 0; cm < 4; cm++) {
+      const cy2 = -(RH * 0.85 + BH/2) - 22 + cm * 7;
+      ctx.beginPath(); ctx.moveTo(chimneyX, cy2); ctx.lineTo(chimneyX + 14, cy2); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(chimneyX + 7, -(RH * 0.85 + BH/2) - 22); ctx.lineTo(chimneyX + 7, -(RH * 0.15 + BH/2)); ctx.stroke();
+    // Chimney cap
+    ctx.fillStyle = '#2a1e10';
+    ctx.fillRect(chimneyX - 2, -(RH * 0.85 + BH/2) - 25, 18, 5);
+
+    // ── Roof ──────────────────────────────────────────
+    const roofPeakY = -(RH + BH/2);
+    // Roof underside (dark shadow)
+    ctx.fillStyle = '#1e1408';
+    ctx.beginPath();
+    ctx.moveTo(-hw - 8, -BH/2 + 2); ctx.lineTo(0, roofPeakY + 3); ctx.lineTo(hw + 8, -BH/2 + 2);
+    ctx.closePath(); ctx.fill();
+    // Main roof shingles base
+    ctx.fillStyle = '#2e2010';
+    ctx.beginPath();
+    ctx.moveTo(-hw - 8, -BH/2); ctx.lineTo(0, roofPeakY); ctx.lineTo(hw + 8, -BH/2);
+    ctx.closePath(); ctx.fill();
+    // Shingle rows (horizontal lines across the slope)
+    const roofSlope = Math.sqrt((hw + 8) * (hw + 8) + RH * RH);
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    for (let sh = 1; sh < 5; sh++) {
+      const t2 = sh / 5;
+      const ly  = -BH/2 + t2 * (roofPeakY - (-BH/2));
+      const lxw = (hw + 8) * (1 - t2);
+      ctx.beginPath(); ctx.moveTo(-lxw, ly); ctx.lineTo(lxw, ly); ctx.stroke();
+    }
+    // Ridge cap
+    ctx.strokeStyle = '#4a3018'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-4, roofPeakY + 2); ctx.lineTo(4, roofPeakY + 2); ctx.stroke();
+
+    // Snow on roof (thick layer, lumpy)
+    ctx.fillStyle = '#ddeeff';
+    ctx.beginPath();
+    ctx.moveTo(-hw - 8, -BH/2);
+    ctx.lineTo(-hw * 0.6, -BH/2 - 4 + Math.sin(1.2) * 3);
+    ctx.lineTo(-hw * 0.1, roofPeakY + 5);
+    ctx.lineTo(0,         roofPeakY + 2);
+    ctx.lineTo(hw * 0.1,  roofPeakY + 5);
+    ctx.lineTo(hw * 0.55, -BH/2 - 3 + Math.sin(2.1) * 2);
+    ctx.lineTo(hw + 8,    -BH/2);
+    ctx.lineTo(hw + 8,    -BH/2 + 8);
+    ctx.lineTo(-hw - 8,   -BH/2 + 8);
+    ctx.closePath(); ctx.fill();
+    // Snow drip edge — slight icicle hints
+    for (let ic = 0; ic < 6; ic++) {
+      const ix = -hw - 4 + ic * (h.w + 12) / 5;
+      const ilen = 5 + Math.abs(Math.sin(ic * 1.7 + 0.5)) * 10;
+      const ig = ctx.createLinearGradient(ix, -BH/2 + 8, ix, -BH/2 + 8 + ilen);
+      ig.addColorStop(0,   'rgba(210,238,255,0.88)');
+      ig.addColorStop(0.7, 'rgba(220,242,255,0.44)');
+      ig.addColorStop(1,   'rgba(230,248,255,0)');
+      ctx.fillStyle = ig;
       ctx.beginPath();
-      ctx.arc(hw * 0.22 + 6 + drift + Math.sin(t * 4.5 + i * 1.2) * 4,
-              -(RH + BH/2) - 18 - t * 46, 4 + t * 9, 0, Math.PI * 2);
+      ctx.moveTo(ix - 2.5, -BH/2 + 8);
+      ctx.lineTo(ix + 2.5, -BH/2 + 8);
+      ctx.lineTo(ix, -BH/2 + 8 + ilen);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // ── Wall body — wood planks ───────────────────────
+    // Base wall fill
+    const wallGrd2 = ctx.createLinearGradient(-hw, 0, hw, 0);
+    wallGrd2.addColorStop(0,    '#5a4030');
+    wallGrd2.addColorStop(0.07, '#4e3828');
+    wallGrd2.addColorStop(0.93, '#4a3424');
+    wallGrd2.addColorStop(1,    '#3a2818');
+    ctx.fillStyle = wallGrd2;
+    ctx.fillRect(-hw, -BH/2, h.w, BH - 6);
+
+    // Horizontal plank lines (wood siding)
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1;
+    const plankH = 8;
+    for (let pl = 1; pl * plankH < BH - 6; pl++) {
+      const py2 = -BH/2 + pl * plankH;
+      ctx.beginPath(); ctx.moveTo(-hw, py2); ctx.lineTo(hw, py2); ctx.stroke();
+    }
+    // Plank top highlight (grain)
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.8;
+    for (let pl = 0; pl * plankH < BH - 6; pl++) {
+      const py2 = -BH/2 + pl * plankH + 1;
+      ctx.beginPath(); ctx.moveTo(-hw + 4, py2); ctx.lineTo(hw - 4, py2); ctx.stroke();
+    }
+    // Left wall lit face
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(-hw, -BH/2, 7, BH - 6);
+    // Right wall shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(hw - 12, -BH/2, 12, BH - 6);
+
+    // Corner trim boards
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(-hw - 2, -BH/2, 6, BH - 6);
+    ctx.fillRect(hw - 4, -BH/2, 6, BH - 6);
+
+    // ── Windows (2x, with shutters) ──────────────────
+    const winPositions = [{ x: -hw + 10, w: 20, h: 18 }, { x: hw - 30, w: 20, h: 18 }];
+    for (const wp of winPositions) {
+      // Window recess shadow
+      ctx.fillStyle = '#1a100a';
+      ctx.fillRect(wp.x - 2, -BH/2 + 12, wp.w + 4, wp.h + 4);
+      // Window frame
+      ctx.fillStyle = '#3a2010';
+      ctx.fillRect(wp.x, -BH/2 + 14, wp.w, wp.h);
+      // Glass panes (2×2)
+      ctx.fillStyle = warm ? '#ffcc44' : '#1a2e48';
+      ctx.fillRect(wp.x + 2, -BH/2 + 16, (wp.w - 5) / 2, (wp.h - 5) / 2);
+      ctx.fillRect(wp.x + 2 + (wp.w - 5) / 2 + 2, -BH/2 + 16, (wp.w - 5) / 2, (wp.h - 5) / 2);
+      ctx.fillRect(wp.x + 2, -BH/2 + 16 + (wp.h - 5) / 2 + 2, (wp.w - 5) / 2, (wp.h - 5) / 2);
+      ctx.fillRect(wp.x + 2 + (wp.w - 5) / 2 + 2, -BH/2 + 16 + (wp.h - 5) / 2 + 2, (wp.w - 5) / 2, (wp.h - 5) / 2);
+      // Muntins (window frame dividers)
+      ctx.strokeStyle = '#3a2010'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(wp.x + wp.w/2, -BH/2 + 14); ctx.lineTo(wp.x + wp.w/2, -BH/2 + 14 + wp.h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(wp.x, -BH/2 + 14 + wp.h/2); ctx.lineTo(wp.x + wp.w, -BH/2 + 14 + wp.h/2); ctx.stroke();
+      // Glass glare
+      ctx.fillStyle = 'rgba(200,235,255,0.14)';
+      ctx.fillRect(wp.x + 2, -BH/2 + 16, 5, 2);
+      // Shutters (small planked panels on sides)
+      const shutW = 6;
+      for (const side of [-1, 1]) {
+        const shx = side > 0 ? wp.x + wp.w + 1 : wp.x - shutW - 1;
+        ctx.fillStyle = '#2a1808';
+        ctx.fillRect(shx, -BH/2 + 14, shutW, wp.h);
+        ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 0.8;
+        for (let sl2 = 1; sl2 < 4; sl2++) {
+          ctx.beginPath(); ctx.moveTo(shx, -BH/2 + 14 + sl2 * (wp.h / 4)); ctx.lineTo(shx + shutW, -BH/2 + 14 + sl2 * (wp.h / 4)); ctx.stroke();
+        }
+      }
+      // Warm window glow spillout
+      if (warm) {
+        const wg = ctx.createRadialGradient(wp.x + wp.w/2, -BH/2 + 22, 0, wp.x + wp.w/2, -BH/2 + 22, 36);
+        wg.addColorStop(0, 'rgba(255,200,60,0.32)'); wg.addColorStop(1, 'rgba(255,200,60,0)');
+        ctx.fillStyle = wg; ctx.fillRect(wp.x - 36, -BH/2, wp.w + 72, BH);
+      }
+    }
+
+    // ── Door ─────────────────────────────────────────
+    const dw = 22, dh = 36;
+    const dTop = BH/2 - dh - 6;
+    // Door frame
+    ctx.fillStyle = '#2a1a0c';
+    ctx.fillRect(-dw/2 - 3, dTop - 2, dw + 6, dh + 8);
+    // Door planks
+    ctx.fillStyle = '#1e1008';
+    ctx.fillRect(-dw/2, dTop, dw, dh);
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 0.8;
+    for (let dp = 1; dp < 4; dp++) {
+      ctx.beginPath(); ctx.moveTo(-dw/2 + 2, dTop + dp * (dh/4)); ctx.lineTo(dw/2 - 2, dTop + dp * (dh/4)); ctx.stroke();
+    }
+    // Door hinge
+    ctx.fillStyle = '#8a6828';
+    ctx.fillRect(-dw/2 + 2, dTop + 6, 5, 4);
+    ctx.fillRect(-dw/2 + 2, dTop + dh - 10, 5, 4);
+    // Door knob
+    ctx.fillStyle = '#c8a050';
+    ctx.beginPath(); ctx.arc(dw/2 - 5, dTop + dh/2, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.20)';
+    ctx.beginPath(); ctx.arc(dw/2 - 6, dTop + dh/2 - 1, 1.5, 0, Math.PI*2); ctx.fill();
+
+    // ── Entry step ───────────────────────────────────
+    ctx.fillStyle = '#2e2218';
+    ctx.fillRect(-dw/2 - 4, BH/2 - 6, dw + 8, 6);
+    ctx.fillStyle = 'rgba(0,0,0,0.20)';
+    ctx.fillRect(-dw/2 - 4, BH/2 + 1, dw + 8, 2);
+
+    // ── Chimney smoke ─────────────────────────────────
+    const smokeDir = wind.force * -18;
+    ctx.globalAlpha = h.alpha;
+    for (let i = 0; i < 6; i++) {
+      const t2 = ((frame * 0.011 + i * 0.20) % 1);
+      const drift = smokeDir * t2;
+      const wobble = Math.sin(t2 * 5.0 + i * 1.3) * 4;
+      ctx.globalAlpha = h.alpha * (0.42 - t2 * 0.42);
+      ctx.fillStyle = t2 < 0.35 ? '#c0b8b0' : '#909090';
+      ctx.beginPath();
+      ctx.arc(chimneyX + 7 + drift + wobble, -(RH * 0.85 + BH/2) - 22 - t2 * 50,
+              3.5 + t2 * 10, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = h.alpha;
   }
 
   ctx.restore();
