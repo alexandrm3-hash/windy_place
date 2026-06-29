@@ -1387,206 +1387,512 @@ function drawHouse(h) {
     // ══════════════════════════════════════════════════
     // ── FORTRESS BUNKER ───────────────────────────────
     // ══════════════════════════════════════════════════
+    // Layout (origin = cx,cy):
+    //   Roof slab top  : y = -BH/2 - RH  = -83
+    //   Wall top       : y = -BH/2        = -55
+    //   Wall bottom    : y =  BH/2        =  55
+    //   Foundation     : y =  BH/2..+12
+    //   Tower tops     : y = -BH/2 - RH - 30 (well above crenellations)
 
-    // Occupied warm glow
+    const roofTop   = -BH/2 - RH;       // -83
+    const wallTop   = -BH/2;            // -55
+    const wallBot   = BH/2;             //  55
+    const towerW    = 28;               // full width of each corner tower
+    const towerH    = BH + RH + 22;     // taller than the main roof
+    const towerTop  = wallTop - RH - 22;
+    const crenH     = 14, crenW = 12, crenGap = 9;
+
+    // ── Warm/occupied glow ────────────────────────────
     if (warm) {
-      const grd = ctx.createRadialGradient(0, 10, 0, 0, 10, hw * 2.6);
-      grd.addColorStop(0, 'rgba(255,180,60,0.24)');
-      grd.addColorStop(1, 'rgba(255,180,60,0)');
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 3.0);
+      grd.addColorStop(0, 'rgba(255,160,50,0.28)');
+      grd.addColorStop(0.5,'rgba(255,140,30,0.10)');
+      grd.addColorStop(1, 'rgba(255,120,20,0)');
       ctx.fillStyle = grd;
-      ctx.fillRect(-hw * 2.6, -BH, hw * 5.2, BH * 3);
+      ctx.fillRect(-hw * 3, towerTop - 30, hw * 6, towerH + 80);
     }
 
-    // ── Ground foundation slab ────────────────────────
-    ctx.fillStyle = '#26241e';
-    ctx.fillRect(-hw - 8, BH/2, h.w + 16, 10);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(-hw - 8, BH/2 + 8, h.w + 16, 3);
+    // ═══════════════════════════════════════════════════
+    // LAYER 1 — DEEP SHADOW / FOUNDATION
+    // ═══════════════════════════════════════════════════
 
-    // ── Corner buttresses (thick reinforced pillars) ──
+    // Wide concrete foundation slab
+    ctx.fillStyle = '#1e1c16';
+    ctx.fillRect(-hw - 14, wallBot, h.w + 28, 14);
+    // Foundation bevelled top edge
+    ctx.fillStyle = '#2e2c24';
+    ctx.fillRect(-hw - 14, wallBot, h.w + 28, 4);
+    // Foundation drain slots
+    ctx.fillStyle = '#0e0c0a';
+    for (let di = 0; di < 5; di++) {
+      const dx = -hw + 18 + di * (h.w - 16) / 4;
+      ctx.fillRect(dx - 4, wallBot + 4, 8, 5);
+      // Grate bars
+      ctx.strokeStyle = '#3a3828'; ctx.lineWidth = 0.8;
+      for (let gi = 0; gi < 3; gi++) {
+        ctx.beginPath(); ctx.moveTo(dx - 3 + gi * 3, wallBot + 4); ctx.lineTo(dx - 3 + gi * 3, wallBot + 9); ctx.stroke();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    // LAYER 2 — CORNER GUARD TOWERS
+    // ═══════════════════════════════════════════════════
     for (const side of [-1, 1]) {
-      const bx = side * (hw + 2);
-      const bw = side * 18;
-      ctx.fillStyle = '#2a2820';
-      ctx.fillRect(bx, -BH/2 - 4, bw, BH + 14);
-      // Buttress vertical groove
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(bx + (side > 0 ? bw - 4 : 0), -BH/2 - 4, 4, BH + 14);
-      // Buttress top cap
+      const tx = side > 0 ? hw - towerW + 2 : -hw - 2;
+
+      // Tower body — slightly darker than main wall
+      const tGrd = ctx.createLinearGradient(tx, 0, tx + towerW, 0);
+      tGrd.addColorStop(0,   side > 0 ? '#383630' : '#424038');
+      tGrd.addColorStop(0.5, side > 0 ? '#3e3c34' : '#3e3c34');
+      tGrd.addColorStop(1,   side > 0 ? '#2c2a22' : '#32302a');
+      ctx.fillStyle = tGrd;
+      ctx.fillRect(tx, towerTop, towerW, towerH);
+
+      // Horizontal masonry courses on tower
+      ctx.strokeStyle = 'rgba(0,0,0,0.32)'; ctx.lineWidth = 1.2;
+      const courses = 8;
+      for (let co = 1; co < courses; co++) {
+        const cy3 = towerTop + co * (towerH / courses);
+        ctx.beginPath(); ctx.moveTo(tx, cy3); ctx.lineTo(tx + towerW, cy3); ctx.stroke();
+      }
+      // Vertical stone joints (alternating per course)
+      for (let co = 0; co < courses; co++) {
+        const cy3 = towerTop + co * (towerH / courses);
+        const jx = tx + (co % 2 === 0 ? towerW * 0.5 : towerW * 0.33);
+        ctx.beginPath(); ctx.moveTo(jx, cy3); ctx.lineTo(jx, cy3 + towerH / courses); ctx.stroke();
+      }
+
+      // Tower narrow window slit (mid-height)
+      const slitY = towerTop + towerH * 0.38;
+      ctx.fillStyle = '#0a0806';
+      ctx.fillRect(tx + towerW * 0.32, slitY, towerW * 0.36, 18);
+      ctx.fillStyle = warm ? '#bb8820' : '#080604';
+      ctx.fillRect(tx + towerW * 0.36, slitY + 2, towerW * 0.28, 14);
+      // Cross bars on slit
+      ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 1.2;
+      const slitMx = tx + towerW * 0.5;
+      ctx.beginPath(); ctx.moveTo(slitMx, slitY + 2); ctx.lineTo(slitMx, slitY + 16); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx + towerW * 0.36, slitY + 9); ctx.lineTo(tx + towerW * 0.64, slitY + 9); ctx.stroke();
+
+      // Second lower slit
+      const slit2Y = towerTop + towerH * 0.65;
+      ctx.fillStyle = '#0a0806';
+      ctx.fillRect(tx + towerW * 0.32, slit2Y, towerW * 0.36, 14);
+      ctx.fillStyle = warm ? '#bb8820' : '#080604';
+      ctx.fillRect(tx + towerW * 0.36, slit2Y + 2, towerW * 0.28, 10);
+
+      // Tower top parapet — crenellated
+      const tCrenCount = 3;
+      const tCrenW = Math.floor(towerW / (tCrenCount * 2 - 1));
+      for (let ci = 0; ci < tCrenCount; ci++) {
+        const cx3 = tx + ci * (tCrenW + tCrenW * 0.8);
+        ctx.fillStyle = '#2e2c24';
+        ctx.fillRect(cx3, towerTop - crenH, tCrenW, crenH);
+        // Merlon snow cap
+        ctx.fillStyle = 'rgba(218,240,255,0.65)';
+        ctx.fillRect(cx3, towerTop - crenH, tCrenW, 4);
+      }
+      // Tower roof slab (between crenellations)
       ctx.fillStyle = '#1e1c16';
-      ctx.fillRect(bx, -BH/2 - 10, bw, 8);
+      ctx.fillRect(tx - 1, towerTop - 4, towerW + 2, 5);
+      // Snow on tower roof
+      ctx.fillStyle = 'rgba(218,240,255,0.55)';
+      ctx.fillRect(tx, towerTop - 4, towerW, 3);
+
+      // Tower lit face (bright side)
+      ctx.fillStyle = side > 0 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.04)';
+      ctx.fillRect(tx, towerTop, towerW, towerH);
+
+      // Searchlight on right tower — sweeps slowly
+      if (side > 0) {
+        const lightAngle = Math.sin(frame * 0.018) * 0.55 - 0.2;
+        const lx = tx + towerW * 0.5;
+        const ly = towerTop - crenH - 4;
+        // Light beam (fan shape)
+        const beamAlpha = 0.10 + Math.abs(Math.sin(frame * 0.018)) * 0.08;
+        ctx.save();
+        ctx.globalAlpha = h.alpha * beamAlpha;
+        const beamGrd = ctx.createConicalGradient
+          ? null : null; // fallback: triangle
+        ctx.fillStyle = 'rgba(255,240,180,0.55)';
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx + Math.cos(lightAngle - 0.22) * 120, ly + Math.sin(lightAngle - 0.22) * 120);
+        ctx.lineTo(lx + Math.cos(lightAngle + 0.22) * 120, ly + Math.sin(lightAngle + 0.22) * 120);
+        ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = h.alpha;
+        ctx.restore();
+        // Searchlight housing
+        ctx.fillStyle = '#3a3830';
+        ctx.beginPath(); ctx.arc(lx, ly, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e8d880';
+        ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI * 2); ctx.fill();
+      }
     }
 
-    // ── Massive concrete walls (full height) ──────────
-    const wallGrd = ctx.createLinearGradient(-hw, 0, hw, 0);
-    wallGrd.addColorStop(0,    '#3e3c34');
-    wallGrd.addColorStop(0.08, '#4a4840');
-    wallGrd.addColorStop(0.50, '#46443c');
-    wallGrd.addColorStop(0.92, '#3a3830');
-    wallGrd.addColorStop(1,    '#2c2a24');
-    ctx.fillStyle = wallGrd;
-    ctx.fillRect(-hw, -BH/2, h.w, BH);
+    // ═══════════════════════════════════════════════════
+    // LAYER 3 — MAIN WALL BODY
+    // ═══════════════════════════════════════════════════
 
-    // Concrete block horizontal seams (5 rows)
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.4;
-    for (let sl = 1; sl < 5; sl++) {
-      const sy2 = -BH/2 + sl * (BH / 5);
+    // Main wall (between the two towers)
+    const wallGrd = ctx.createLinearGradient(-hw, 0, hw, 0);
+    wallGrd.addColorStop(0,    '#424038');
+    wallGrd.addColorStop(0.06, '#4e4c42');
+    wallGrd.addColorStop(0.50, '#484640');
+    wallGrd.addColorStop(0.94, '#3e3c34');
+    wallGrd.addColorStop(1,    '#302e28');
+    ctx.fillStyle = wallGrd;
+    ctx.fillRect(-hw, wallTop, h.w, BH);
+
+    // Concrete block courses — 6 horizontal seams
+    ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 1.4;
+    const courses = 6;
+    for (let sl = 1; sl < courses; sl++) {
+      const sy2 = wallTop + sl * (BH / courses);
       ctx.beginPath(); ctx.moveTo(-hw, sy2); ctx.lineTo(hw, sy2); ctx.stroke();
     }
-    // Vertical block seams (staggered per row)
-    for (let sl = 0; sl < 5; sl++) {
-      const rowTop = -BH/2 + sl * (BH / 5);
-      const cols = sl % 2 === 0 ? 3 : 4;
+    // Staggered vertical joints per course
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 1;
+    for (let sl = 0; sl < courses; sl++) {
+      const rowTop = wallTop + sl * (BH / courses);
+      const cols = sl % 2 === 0 ? 4 : 3;
       for (let vc = 1; vc < cols; vc++) {
         const vx2 = -hw + vc * (h.w / cols);
-        ctx.beginPath(); ctx.moveTo(vx2, rowTop); ctx.lineTo(vx2, rowTop + BH/5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(vx2, rowTop); ctx.lineTo(vx2, rowTop + BH / courses); ctx.stroke();
       }
     }
-    // Surface weathering patches
-    ctx.fillStyle = 'rgba(0,0,0,0.08)';
-    ctx.fillRect(-hw + 20, -BH/2 + 8, 22, 18);
-    ctx.fillRect(hw - 38, -BH/2 + 30, 16, 24);
 
-    // Left wall light bevel
+    // Concrete surface imperfections — darker stain patches
+    ctx.fillStyle = 'rgba(0,0,0,0.09)';
+    ctx.fillRect(-hw + 28, wallTop + 10, 18, 14);
+    ctx.fillRect(hw  - 52, wallTop + 38, 20, 20);
+    ctx.fillRect(-hw + 60, wallTop + 60, 14, 16);
+    // Hairline cracks
+    ctx.strokeStyle = 'rgba(0,0,0,0.20)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(-hw + 35, wallTop + 18); ctx.lineTo(-hw + 42, wallTop + 30); ctx.lineTo(-hw + 38, wallTop + 38); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hw - 40, wallTop + 5);  ctx.lineTo(hw - 36, wallTop + 18); ctx.stroke();
+
+    // Left face highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    ctx.fillRect(-hw, wallTop, 6, BH);
+    // Top-edge ledge shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(-hw, wallTop, h.w, 5);
+
+    // ═══════════════════════════════════════════════════
+    // LAYER 4 — GATEHOUSE (raised block above the door)
+    // ═══════════════════════════════════════════════════
+    const ghW = 56, ghH = 28;
+    const ghTop = wallTop - ghH;
+    ctx.fillStyle = '#3a3830';
+    ctx.fillRect(-ghW/2, ghTop, ghW, ghH);
+    // Gatehouse side bevels
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(ghW/2 - 5, ghTop, 5, ghH);
     ctx.fillStyle = 'rgba(255,255,255,0.04)';
-    ctx.fillRect(-hw, -BH/2, 5, BH);
-
-    // ── Sandbag wall across the base (drawn over wall) ─
-    const sbW = 17, sbH = 10;
-    for (let row = 0; row < 2; row++) {
-      // row 0 = front (bottom), row 1 = back (slightly higher)
-      const rowY = BH/2 - 7 - row * (sbH - 2);
-      const offset = row % 2 === 0 ? 0 : sbW / 2;
-      const count = Math.ceil(h.w / sbW) + 1;
-      for (let sb = 0; sb < count; sb++) {
-        const sbX = -hw + sb * sbW - offset;
-        if (sbX + sbW < -hw || sbX > hw) continue;
-        ctx.fillStyle = row === 0 ? (sb%2===0 ? '#6a5830' : '#5a4a28') : (sb%2===0 ? '#5e5028' : '#504424');
-        ctx.beginPath();
-        ctx.ellipse(sbX + sbW/2, rowY + sbH/2, sbW/2 - 1, sbH/2 - 0.5, 0, 0, Math.PI*2);
-        ctx.fill();
-        // Seam shadow
-        ctx.strokeStyle = 'rgba(0,0,0,0.30)'; ctx.lineWidth = 0.8;
-        ctx.beginPath(); ctx.moveTo(sbX + 1, rowY + sbH/2); ctx.lineTo(sbX + sbW - 1, rowY + sbH/2); ctx.stroke();
-      }
+    ctx.fillRect(-ghW/2, ghTop, 5, ghH);
+    // Gatehouse masonry seams
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-ghW/2, ghTop + ghH * 0.5); ctx.lineTo(ghW/2, ghTop + ghH * 0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, ghTop); ctx.lineTo(0, ghTop + ghH * 0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-ghW/4, ghTop + ghH * 0.5); ctx.lineTo(-ghW/4, ghTop + ghH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( ghW/4, ghTop + ghH * 0.5); ctx.lineTo( ghW/4, ghTop + ghH); ctx.stroke();
+    // Gatehouse crenellations (3 merlons)
+    for (let ci = 0; ci < 3; ci++) {
+      const cx3 = -ghW/2 + ci * (ghW / 2.5) + 2;
+      ctx.fillStyle = '#2e2c24';
+      ctx.fillRect(cx3, ghTop - 10, 14, 10);
+      ctx.fillStyle = 'rgba(218,240,255,0.60)';
+      ctx.fillRect(cx3, ghTop - 10, 14, 4);
     }
+    // Gatehouse warning sign
+    ctx.fillStyle = 'rgba(200,160,20,0.70)';
+    ctx.font = 'bold 6px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('SHELTER', 0, ghTop + 11);
+    ctx.fillText('WINDCHILL', 0, ghTop + 20);
 
-    // ── Flat armoured roof ────────────────────────────
-    ctx.fillStyle = '#1c1a14';
-    ctx.fillRect(-hw - 6, -BH/2 - RH, h.w + 12, RH + 6);
-    // Roof top surface — slight texture
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
-    for (let ri = 0; ri < 4; ri++) {
-      const ry2 = -BH/2 - RH + ri * 7;
-      ctx.beginPath(); ctx.moveTo(-hw - 4, ry2); ctx.lineTo(hw + 4, ry2); ctx.stroke();
+    // ═══════════════════════════════════════════════════
+    // LAYER 5 — MAIN ROOF SLAB + PARAPET
+    // ═══════════════════════════════════════════════════
+
+    // Roof slab
+    const roofGrd = ctx.createLinearGradient(0, roofTop, 0, wallTop);
+    roofGrd.addColorStop(0,   '#1a1814');
+    roofGrd.addColorStop(0.3, '#222018');
+    roofGrd.addColorStop(1,   '#1e1c16');
+    ctx.fillStyle = roofGrd;
+    ctx.fillRect(-hw - 5, roofTop, h.w + 10, RH + 5);
+    // Roof surface ridges / panel lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+    for (let ri = 0; ri < 3; ri++) {
+      const ry2 = roofTop + 5 + ri * 7;
+      ctx.beginPath(); ctx.moveTo(-hw - 3, ry2); ctx.lineTo(hw + 3, ry2); ctx.stroke();
     }
-    // Roof front parapet (crenellations)
-    const crenW = 14, crenH = 12, crenGap = 10;
-    const crenCount = Math.floor(h.w / (crenW + crenGap));
+    // Roof edge ridge bar
+    ctx.strokeStyle = '#545248'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-hw - 5, wallTop); ctx.lineTo(hw + 5, wallTop); ctx.stroke();
+
+    // Main parapet crenellations
+    const crenCount = Math.floor((h.w - 10) / (crenW + crenGap));
     const crenStart = -((crenCount * (crenW + crenGap) - crenGap) / 2);
     for (let ci = 0; ci < crenCount; ci++) {
       const cx2 = crenStart + ci * (crenW + crenGap);
-      ctx.fillStyle = '#1c1a14';
-      ctx.fillRect(cx2, -BH/2 - RH - crenH, crenW, crenH);
-      // Crenellation snow
-      ctx.fillStyle = 'rgba(210,235,252,0.55)';
-      ctx.fillRect(cx2, -BH/2 - RH - crenH, crenW, 4);
+      ctx.fillStyle = '#222018';
+      ctx.fillRect(cx2, roofTop - crenH, crenW, crenH);
+      // Merlon top snow
+      ctx.fillStyle = 'rgba(218,240,255,0.65)';
+      ctx.fillRect(cx2, roofTop - crenH, crenW, 4);
+      // Merlon side shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.20)';
+      ctx.fillRect(cx2 + crenW - 2, roofTop - crenH, 2, crenH);
     }
-    // Roof edge ridge
-    ctx.strokeStyle = '#504e44'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(-hw - 6, -BH/2); ctx.lineTo(hw + 6, -BH/2); ctx.stroke();
-    // Snow on flat roof
-    ctx.fillStyle = 'rgba(215,238,255,0.62)';
-    ctx.fillRect(-hw - 6, -BH/2 - RH, h.w + 12, 5);
+    // Snow on flat roof surface
+    ctx.fillStyle = 'rgba(218,240,255,0.60)';
+    ctx.fillRect(-hw - 5, roofTop, h.w + 10, 5);
 
-    // ── Rooftop equipment ─────────────────────────────
-    // Main antenna mast
-    ctx.strokeStyle = '#585650'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(-hw * 0.55, -BH/2 - RH - crenH); ctx.lineTo(-hw * 0.55, -BH/2 - RH - crenH - 28); ctx.stroke();
-    // Cross-arm
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(-hw * 0.55 - 10, -BH/2 - RH - crenH - 22); ctx.lineTo(-hw * 0.55 + 10, -BH/2 - RH - crenH - 22); ctx.stroke();
-    // Blinking red light
-    const blinkOn = Math.sin(frame * 0.06) > 0;
-    ctx.fillStyle = blinkOn ? '#ff3030' : '#7a1818';
-    ctx.beginPath(); ctx.arc(-hw * 0.55, -BH/2 - RH - crenH - 30, 3.5, 0, Math.PI*2); ctx.fill();
-    // Second small antenna
-    ctx.strokeStyle = '#484640'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(hw * 0.4, -BH/2 - RH - crenH); ctx.lineTo(hw * 0.4, -BH/2 - RH - crenH - 16); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(hw * 0.4 - 6, -BH/2 - RH - crenH - 12); ctx.lineTo(hw * 0.4 + 6, -BH/2 - RH - crenH - 12); ctx.stroke();
+    // ═══════════════════════════════════════════════════
+    // LAYER 6 — ROOFTOP EQUIPMENT
+    // ═══════════════════════════════════════════════════
 
-    // Vent pipes
-    for (const vp of [hw * 0.15, hw * 0.55]) {
-      ctx.fillStyle = '#36342c';
-      ctx.fillRect(vp - 5, -BH/2 - RH - 10, 10, 14);
-      ctx.fillStyle = '#1e1c16';
-      ctx.fillRect(vp - 7, -BH/2 - RH - 15, 14, 7);
-      // Vent cap sheen
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      ctx.fillRect(vp - 7, -BH/2 - RH - 15, 5, 7);
+    const equipBase = roofTop - crenH; // top of crenellations
+
+    // Main radar / comms mast (left-center)
+    const mastX = -hw * 0.45;
+    ctx.strokeStyle = '#606058'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(mastX, equipBase); ctx.lineTo(mastX, equipBase - 36); ctx.stroke();
+    // Mast cross-arms (3 levels)
+    ctx.lineWidth = 1.8;
+    for (let arm = 0; arm < 3; arm++) {
+      const ay = equipBase - 12 - arm * 10;
+      const aw = 12 - arm * 3;
+      ctx.strokeStyle = arm === 0 ? '#585050' : '#504848';
+      ctx.beginPath(); ctx.moveTo(mastX - aw, ay); ctx.lineTo(mastX + aw, ay); ctx.stroke();
+      // Diagonal braces
+      ctx.strokeStyle = 'rgba(80,76,72,0.60)'; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(mastX - aw, ay); ctx.lineTo(mastX, ay - 8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mastX + aw, ay); ctx.lineTo(mastX, ay - 8); ctx.stroke();
+    }
+    // Blinking red beacon
+    const blinkOn = Math.sin(frame * 0.055) > 0;
+    const blinkGlow = Math.max(0, Math.sin(frame * 0.055));
+    if (blinkOn) {
+      const bg2 = ctx.createRadialGradient(mastX, equipBase - 38, 0, mastX, equipBase - 38, 12);
+      bg2.addColorStop(0, 'rgba(255,40,40,0.55)'); bg2.addColorStop(1, 'rgba(255,40,40,0)');
+      ctx.fillStyle = bg2; ctx.fillRect(mastX - 12, equipBase - 50, 24, 24);
+    }
+    ctx.fillStyle = blinkOn ? '#ff2828' : '#6a1010';
+    ctx.beginPath(); ctx.arc(mastX, equipBase - 38, blinkOn ? 4 : 3, 0, Math.PI*2); ctx.fill();
+
+    // Satellite dish (right of center)
+    const dishX = hw * 0.35;
+    const dishY = equipBase - 8;
+    // Dish pole
+    ctx.strokeStyle = '#484640'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(dishX, equipBase); ctx.lineTo(dishX, dishY); ctx.stroke();
+    // Dish bowl
+    ctx.strokeStyle = '#686460'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(dishX, dishY, 9, Math.PI * 0.1, Math.PI * 0.9);
+    ctx.stroke();
+    // Dish feed arm
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(dishX, dishY); ctx.lineTo(dishX + 5, dishY - 7); ctx.stroke();
+    ctx.fillStyle = '#888078';
+    ctx.beginPath(); ctx.arc(dishX + 5, dishY - 7, 2, 0, Math.PI*2); ctx.fill();
+
+    // Three vent stacks
+    for (const vp of [-hw * 0.15, hw * 0.08, hw * 0.62]) {
+      ctx.fillStyle = '#383630';
+      ctx.fillRect(vp - 5, equipBase - 14, 10, 18);
+      // Inner dark hole
+      ctx.fillStyle = '#141210';
+      ctx.beginPath(); ctx.ellipse(vp, equipBase - 14, 4, 2.5, 0, 0, Math.PI*2); ctx.fill();
+      // Cap flange
+      ctx.fillStyle = '#2a2820';
+      ctx.fillRect(vp - 7, equipBase - 18, 14, 6);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(vp - 7, equipBase - 18, 5, 6);
+      // Smoke wisps from vents
+      for (let vs = 0; vs < 2; vs++) {
+        const vt = ((frame * 0.009 + vs * 0.55) % 1);
+        const vdrift = wind.force * -12 * vt;
+        ctx.globalAlpha = h.alpha * (0.28 - vt * 0.28);
+        ctx.fillStyle = '#a0a0a0';
+        ctx.beginPath();
+        ctx.arc(vp + vdrift + Math.sin(vt * 4 + vs) * 3,
+                equipBase - 18 - vt * 30, 2 + vt * 5, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = h.alpha;
     }
 
-    // ── Vault door (center, massive) ──────────────────
-    const dw = 38, dh = 54;
-    const dTop = BH/2 - dh - 20; // sits above the sandbag base
-    // Door frame (thick, recessed)
-    ctx.fillStyle = '#141210';
-    ctx.fillRect(-dw/2 - 4, dTop - 4, dw + 8, dh + 8);
-    // Door face
-    const doorGrd = ctx.createLinearGradient(-dw/2, dTop, dw/2, dTop);
-    doorGrd.addColorStop(0,   '#1e1c18');
-    doorGrd.addColorStop(0.3, '#2a2820');
-    doorGrd.addColorStop(1,   '#141210');
-    ctx.fillStyle = doorGrd;
+    // ═══════════════════════════════════════════════════
+    // LAYER 7 — VAULT DOOR
+    // ═══════════════════════════════════════════════════
+    const dw = 40, dh = 56;
+    const dTop = wallBot - dh - 18; // bottom of door 18px above wall bottom (sandbag zone)
+
+    // Deep door recess (archway shadow)
+    ctx.fillStyle = '#0c0a08';
+    ctx.fillRect(-dw/2 - 6, dTop - 6, dw + 12, dh + 10);
+    // Arch top
+    ctx.beginPath();
+    ctx.arc(0, dTop - 6, dw/2 + 6, Math.PI, 0);
+    ctx.fill();
+
+    // Door face — heavy steel, gradient left-to-right
+    const dGrd = ctx.createLinearGradient(-dw/2, 0, dw/2, 0);
+    dGrd.addColorStop(0,   '#242220');
+    dGrd.addColorStop(0.15,'#2e2c28');
+    dGrd.addColorStop(0.85,'#201e1c');
+    dGrd.addColorStop(1,   '#161412');
+    ctx.fillStyle = dGrd;
     ctx.fillRect(-dw/2, dTop, dw, dh);
-    // Door outer rim
-    ctx.strokeStyle = '#5a5040'; ctx.lineWidth = 3;
-    ctx.strokeRect(-dw/2, dTop, dw, dh);
-    // Inner panel
-    ctx.strokeStyle = '#3a3428'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(-dw/2 + 5, dTop + 5, dw - 10, dh - 10);
-    // Bolt pattern (3×2 grid)
-    ctx.fillStyle = '#706858';
-    for (const bx2 of [-dw/2 + 6, dw/2 - 6]) {
-      for (const by3 of [dTop + 10, dTop + dh/2, dTop + dh - 10]) {
-        ctx.beginPath(); ctx.arc(bx2, by3, 4, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = '#3a3020'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(bx2, by3, 4, 0, Math.PI*2); ctx.stroke();
-      }
-    }
-    // Wheel lock (spoked)
-    const wx2 = 0, wy2 = dTop + dh/2;
-    ctx.strokeStyle = '#908878'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(wx2, wy2, 10, 0, Math.PI*2); ctx.stroke();
-    ctx.lineWidth = 1.5;
-    for (let sp = 0; sp < 6; sp++) {
-      const ang = sp * Math.PI / 3;
-      ctx.beginPath(); ctx.moveTo(wx2, wy2); ctx.lineTo(wx2 + Math.cos(ang)*10, wy2 + Math.sin(ang)*10); ctx.stroke();
-    }
-    ctx.fillStyle = '#706858'; ctx.beginPath(); ctx.arc(wx2, wy2, 3, 0, Math.PI*2); ctx.fill();
+    // Arch fill
+    ctx.beginPath();
+    ctx.arc(0, dTop, dw/2, Math.PI, 0);
+    ctx.fill();
 
-    // ── Arrow-slit windows (4x, iron-barred) ─────────
-    const slitPositions = [-hw + 18, -hw + 48, hw - 48, hw - 18];
-    for (const sx2 of slitPositions) {
-      // Recess shadow
-      ctx.fillStyle = '#0e0c0a';
-      ctx.fillRect(sx2 - 5, -BH/2 + 16, 10, 20);
-      // Light / dark interior
-      ctx.fillStyle = warm ? '#cc9930' : '#080806';
-      ctx.fillRect(sx2 - 3, -BH/2 + 18, 6, 16);
-      // Iron bars
-      ctx.strokeStyle = '#3a3428'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(sx2, -BH/2 + 18); ctx.lineTo(sx2, -BH/2 + 34); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(sx2 - 3, -BH/2 + 26); ctx.lineTo(sx2 + 3, -BH/2 + 26); ctx.stroke();
-    }
-    // Warm glow from slits
-    if (warm) {
-      for (const sx2 of slitPositions) {
-        const wg = ctx.createRadialGradient(sx2, -BH/2 + 26, 0, sx2, -BH/2 + 26, 32);
-        wg.addColorStop(0, 'rgba(255,180,40,0.22)'); wg.addColorStop(1, 'rgba(255,180,40,0)');
-        ctx.fillStyle = wg; ctx.fillRect(sx2 - 32, -BH/2, 64, BH);
+    // Outer door frame
+    ctx.strokeStyle = '#625a48'; ctx.lineWidth = 3.5;
+    ctx.strokeRect(-dw/2, dTop, dw, dh);
+    // Inner recessed panel
+    ctx.strokeStyle = '#3c3428'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(-dw/2 + 6, dTop + 6, dw - 12, dh - 12);
+
+    // Bolt grid — 3 cols × 4 rows
+    ctx.fillStyle = '#787060';
+    for (const bx2 of [-dw/2 + 7, 0, dw/2 - 7]) {
+      for (const by3 of [dTop + 10, dTop + 24, dTop + 38, dTop + dh - 10]) {
+        ctx.beginPath(); ctx.arc(bx2, by3, 4.5, 0, Math.PI*2); ctx.fill();
+        // Bolt highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        ctx.beginPath(); ctx.arc(bx2 - 1.5, by3 - 1.5, 2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#787060';
       }
     }
+
+    // Wheel lock — 8-spoke, center of door
+    const wlx = 0, wly = dTop + dh * 0.45;
+    // Outer ring
+    ctx.strokeStyle = '#a09078'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(wlx, wly, 13, 0, Math.PI*2); ctx.stroke();
+    // Inner ring
+    ctx.strokeStyle = '#807060'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(wlx, wly, 8, 0, Math.PI*2); ctx.stroke();
+    // Spokes
+    ctx.strokeStyle = '#908070'; ctx.lineWidth = 2;
+    for (let sp = 0; sp < 8; sp++) {
+      const ang = sp * Math.PI / 4;
+      ctx.beginPath(); ctx.moveTo(wlx + Math.cos(ang) * 3, wly + Math.sin(ang) * 3);
+      ctx.lineTo(wlx + Math.cos(ang) * 13, wly + Math.sin(ang) * 13); ctx.stroke();
+    }
+    // Hub
+    ctx.fillStyle = '#b0a080';
+    ctx.beginPath(); ctx.arc(wlx, wly, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath(); ctx.arc(wlx - 1.5, wly - 1.5, 2, 0, Math.PI*2); ctx.fill();
+
+    // Keyhole below wheel
+    ctx.fillStyle = '#0a0808';
+    ctx.beginPath(); ctx.arc(wlx, wly + 18, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(wlx - 3, wly + 18); ctx.lineTo(wlx - 2, wly + 26); ctx.lineTo(wlx + 2, wly + 26); ctx.lineTo(wlx + 3, wly + 18); ctx.closePath(); ctx.fill();
+
+    // ═══════════════════════════════════════════════════
+    // LAYER 8 — ARROW SLITS + UPPER WINDOWS
+    // ═══════════════════════════════════════════════════
+
+    // Upper row — wide observation slits
+    const upperSlits = [-hw + 22, hw - 22];
+    for (const sx2 of upperSlits) {
+      // Outer shadow recess
+      ctx.fillStyle = '#0a0806';
+      ctx.fillRect(sx2 - 8, wallTop + 10, 16, 26);
+      // Splayed inner reveal (wider inside)
+      ctx.fillStyle = warm ? '#c08820' : '#0e0c08';
+      ctx.beginPath();
+      ctx.moveTo(sx2 - 4, wallTop + 12);
+      ctx.lineTo(sx2 + 4, wallTop + 12);
+      ctx.lineTo(sx2 + 7, wallTop + 34);
+      ctx.lineTo(sx2 - 7, wallTop + 34);
+      ctx.closePath(); ctx.fill();
+      // Iron bar cross
+      ctx.strokeStyle = '#302820'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(sx2, wallTop + 12); ctx.lineTo(sx2, wallTop + 34); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx2 - 4, wallTop + 23); ctx.lineTo(sx2 + 4, wallTop + 23); ctx.stroke();
+    }
+
+    // Lower row — narrow firing slits (4x)
+    const lowerSlits = [-hw + 46, -hw * 0.2, hw * 0.2, hw - 46];
+    for (const sx2 of lowerSlits) {
+      ctx.fillStyle = '#090706';
+      ctx.fillRect(sx2 - 4, wallTop + 52, 8, 22);
+      ctx.fillStyle = warm ? '#aa7818' : '#080604';
+      ctx.fillRect(sx2 - 2, wallTop + 54, 4, 18);
+      // Single vertical bar
+      ctx.strokeStyle = '#282018'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sx2, wallTop + 54); ctx.lineTo(sx2, wallTop + 72); ctx.stroke();
+    }
+
+    // Warm light glow from all slits
+    if (warm) {
+      for (const sx2 of [...upperSlits, ...lowerSlits]) {
+        const wg = ctx.createRadialGradient(sx2, wallTop + 28, 0, sx2, wallTop + 28, 38);
+        wg.addColorStop(0, 'rgba(255,170,30,0.22)'); wg.addColorStop(1, 'rgba(255,170,30,0)');
+        ctx.fillStyle = wg; ctx.fillRect(sx2 - 38, wallTop, 76, BH);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    // LAYER 9 — SANDBAGS + BARBED WIRE
+    // ═══════════════════════════════════════════════════
+
+    // Three rows of sandbags at the base
+    const sbW = 16, sbH = 9;
+    for (let row = 0; row < 3; row++) {
+      const rowY = wallBot - 6 - row * (sbH - 2);
+      const offset = (row % 2) * (sbW / 2);
+      const count = Math.ceil(h.w / sbW) + 2;
+      for (let sb = 0; sb < count; sb++) {
+        const sbX = -hw - 4 + sb * sbW - offset;
+        if (sbX + sbW < -hw - 4 || sbX > hw + 4) continue;
+        const shade = row === 0 ? (sb%2===0 ? '#6e5e32' : '#5e5028') :
+                      row === 1 ? (sb%2===0 ? '#62542c' : '#524824') :
+                                  (sb%2===0 ? '#584c28' : '#4a4020');
+        ctx.fillStyle = shade;
+        ctx.beginPath();
+        ctx.ellipse(sbX + sbW/2, rowY + sbH/2, sbW/2 - 0.5, sbH/2 - 0.5, 0, 0, Math.PI*2);
+        ctx.fill();
+        // Highlight on top
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.beginPath();
+        ctx.ellipse(sbX + sbW/2, rowY + sbH * 0.3, sbW/2 - 2, sbH * 0.22, 0, 0, Math.PI*2);
+        ctx.fill();
+        // Seam line
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(sbX + 2, rowY + sbH/2); ctx.lineTo(sbX + sbW - 2, rowY + sbH/2); ctx.stroke();
+      }
+    }
+
+    // Barbed wire on top of sandbags (2 strands)
+    for (let strand = 0; strand < 2; strand++) {
+      const wireY = wallBot - 30 - strand * 7;
+      ctx.strokeStyle = 'rgba(160,150,120,0.65)'; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      for (let wx3 = -hw - 4; wx3 <= hw + 4; wx3 += 3) {
+        ctx.lineTo(wx3, wireY + Math.sin(wx3 * 0.35) * 1.5);
+      }
+      ctx.stroke();
+      // Barb spikes every 12px
+      ctx.strokeStyle = 'rgba(140,130,100,0.70)'; ctx.lineWidth = 0.7;
+      for (let bx3 = -hw; bx3 < hw; bx3 += 12) {
+        const by4 = wireY + Math.sin(bx3 * 0.35) * 1.5;
+        ctx.beginPath(); ctx.moveTo(bx3 - 3, by4 - 2.5); ctx.lineTo(bx3 + 3, by4 + 2.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bx3 + 3, by4 - 2.5); ctx.lineTo(bx3 - 3, by4 + 2.5); ctx.stroke();
+      }
+    }
+
+    // ── Arrow-slit glow already handled above ────────
 
   } else if (isMetal) {
     // ══════════════════════════════════════════════════
