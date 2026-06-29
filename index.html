@@ -448,19 +448,22 @@ function updatePlayer() {
     }
   }
 
-  // Stamina — drain only while sprinting on ground; regen only on ground (not airborne)
+  // Stamina — drain while shift held (ground or air); regen only when grounded and not sprinting
   const sprinting = sprintKey && player.onGround;
   player.sprinting = sprinting;
-  if (sprinting) {
+  if (sprintKey) {
+    // drain whether on ground or airborne — holding shift always costs stamina
     stamina = Math.max(0, stamina - 0.0038);
     if (stamina <= 0) { stamina = 0; staminaDepleted = true; staminaCooldown = 120; }
   } else if (player.onGround) {
+    // regen only when standing still or walking (not holding shift) on the ground
     if (staminaDepleted) {
       if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
     } else {
       stamina = Math.min(1, stamina + 0.0018);
     }
   }
+  // airborne + no shift = stamina frozen (no regen, no drain)
 
   const walkStep = sprinting ? 14 : 22;                 // frames between footstep sfx
   if (Math.abs(player.vx) > 0.5 && player.onGround) {
