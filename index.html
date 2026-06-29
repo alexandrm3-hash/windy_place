@@ -87,7 +87,7 @@
 #test-menu button:last-child { border-bottom: none; }
 #test-menu button:hover { background: rgba(255,255,255,0.08); }
 #test-menu button.hyper { color: #cc44ff; }
-#test-menu button.void  { color: #ff4400; text-shadow: 0 0 8px #ff2200; }
+#test-menu button.void  { color: #ffffff; text-shadow: 0 0 8px #aaaaaa; }
 </style>
 
 <div id="test-btn" onclick="toggleTestMenu()">⚡ WIND</div>
@@ -116,11 +116,11 @@ const C = {
   skyTop:    [8,  14, 28],
   skyStorm:  [5,   8, 16],
   skyTail:   [12, 22, 42],
-  skyVoid:   [22,  0,  0],   // near-black blood red — void storm sky top
+  skyVoid:   [ 4,  4,  4],   // near-black — void storm sky top
   horizCalm: [45, 82,118],
   horizStorm:[18, 30, 44],
   horizTail: [55, 98,140],
-  horizVoid: [85,  4,  0],   // dark blood-orange horizon under void storm
+  horizVoid: [30, 30, 30],   // dark grey horizon under void storm
 
   mtFar:  'rgba(100,138,172,0.27)',
   mtMid:  'rgba(58,90,130,0.52)',
@@ -799,18 +799,18 @@ function drawSky() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
 
-  // Void storm — pulsing blood-red veil over entire sky
+  // Void storm — pulsing white static veil over entire sky
   if (voidT > 0) {
     const pulse = 0.5 + 0.5 * Math.sin(frame * 0.06);
     ctx.save();
-    ctx.globalAlpha = voidT * (0.22 + pulse * 0.14);
-    ctx.fillStyle = 'rgba(160,0,0,1)';
+    ctx.globalAlpha = voidT * (0.18 + pulse * 0.10);
+    ctx.fillStyle = 'rgba(255,255,255,1)';
     ctx.fillRect(0, 0, W, H);
-    // Crackling hellfire glow at horizon
-    ctx.globalAlpha = voidT * (0.30 + pulse * 0.18);
+    // Pale grey glow at horizon
+    ctx.globalAlpha = voidT * (0.22 + pulse * 0.12);
     const vg = ctx.createLinearGradient(0, H * 0.55, 0, H);
-    vg.addColorStop(0, 'rgba(200,20,0,0)');
-    vg.addColorStop(1, 'rgba(255,60,0,0.70)');
+    vg.addColorStop(0, 'rgba(200,200,200,0)');
+    vg.addColorStop(1, 'rgba(240,240,240,0.55)');
     ctx.fillStyle = vg; ctx.fillRect(0, H * 0.55, W, H * 0.45);
     ctx.restore();
   }
@@ -2766,7 +2766,7 @@ function drawHUD() {
   const fillW = Math.min(barW/2, Math.abs(f)/0.90 * (barW/2));
   if (Math.abs(f) > 0.03) {
     const wCol = f > 0.04 ? '#e8c84a'
-               : wi.lvl>=7 ? '#ff3300'
+               : wi.lvl>=7 ? '#ffffff'
                : wi.lvl>=5 ? '#cc44ff'
                : wi.lvl>=3 ? '#e84040'
                : wi.lvl>=2 ? '#e8902a' : '#5dade2';
@@ -2781,7 +2781,7 @@ function drawHUD() {
   ctx.fillStyle = f >  0.04 ? '#e8c84a' : 'rgba(255,255,255,0.2)';
   ctx.textAlign = 'right'; ctx.fillText('►', bx+barW+14, by+7);
 
-  const lblCol = wi.lvl>=7?'#ff3300':wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
+  const lblCol = wi.lvl>=7?'#ffffff':wi.lvl>=5?'#cc44ff':wi.lvl>=3?'#ff5c5c':wi.lvl>=2?'#ffaa44':C.text;
   ctx.fillStyle = lblCol; ctx.font = 'bold 11px Courier New';
   ctx.textAlign = 'center'; ctx.fillText(wi.label, mx, 29);
   ctx.restore();
@@ -2789,7 +2789,7 @@ function drawHUD() {
   // Score + tier (top left) — shows current position; maxReach tracks best
   const score = Math.floor(player.x / 12);
   const tier  = getWindTier();
-  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff','#ff3300'][tier] || '#ff3300';
+  const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff','#ffffff'][tier] || '#ffffff';
 
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.48)'; rrect(14,10,164,40,5); ctx.fill();
@@ -2821,27 +2821,27 @@ function drawHUD() {
     const t = secretTierTimer / 280;   // 1→0 as it fades
     const alpha = t < 0.15 ? t / 0.15 : t > 0.6 ? (t - 0.6) / 0.4 * (t > 0.85 ? (t - 0.85) / 0.15 : 1) : 1;
     ctx.save();
-    // Deep blood-red full-screen veil
+    // Black full-screen veil
     ctx.globalAlpha = Math.min(0.92, t * 1.4);
-    ctx.fillStyle = '#0d0000';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, W, H);
-    // Pulsing hellfire edge glow
-    ctx.globalAlpha = Math.min(0.65, t) * (0.5 + 0.5 * Math.sin(frame * 0.18));
+    // Pulsing white edge glow
+    ctx.globalAlpha = Math.min(0.55, t) * (0.5 + 0.5 * Math.sin(frame * 0.18));
     const eg = ctx.createRadialGradient(W/2, H/2, H * 0.2, W/2, H/2, H);
-    eg.addColorStop(0, 'rgba(180,0,0,0)'); eg.addColorStop(1, 'rgba(255,30,0,0.75)');
+    eg.addColorStop(0, 'rgba(255,255,255,0)'); eg.addColorStop(1, 'rgba(200,200,200,0.65)');
     ctx.fillStyle = eg; ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = Math.min(1, t * 1.6);
     ctx.textAlign = 'center';
     // Warning line
-    ctx.font = 'bold 11px Courier New'; ctx.fillStyle = 'rgba(255,120,60,0.90)';
+    ctx.font = 'bold 11px Courier New'; ctx.fillStyle = 'rgba(180,180,180,0.85)';
     ctx.fillText('— SECRET TIER UNLOCKED —', W/2, H/2 - 44);
     // Main title
-    ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#ff3300';
+    ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#ffffff';
     ctx.fillText('VOID STORM', W/2, H/2 - 4);
     // Subtitle
-    ctx.font = '11px Courier New'; ctx.fillStyle = 'rgba(255,180,100,0.90)';
+    ctx.font = '11px Courier New'; ctx.fillStyle = 'rgba(210,210,210,0.90)';
     ctx.fillText('NO SHELTER EXISTS AT THIS DEPTH', W/2, H/2 + 24);
-    ctx.font = '9px Courier New'; ctx.fillStyle = 'rgba(220,80,30,0.80)';
+    ctx.font = '9px Courier New'; ctx.fillStyle = 'rgba(150,150,150,0.75)';
     ctx.fillText('2500m — BEYOND THE KNOWN', W/2, H/2 + 44);
     ctx.restore();
   }
