@@ -399,27 +399,23 @@ function updatePlayer() {
       if (cam.x < 0) cam.x = 0;
       cam.y += (player.y - H * 0.60 - cam.y) * 0.09;
       if (player.x > maxReach) maxReach = player.x;
+      // Regen stamina while sheltered in a house
+      player.sprinting = false;
+      if (staminaDepleted) {
+        if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
+      } else {
+        stamina = Math.min(1, stamina + 0.0018);
+      }
       return;
     }
   }
-  // Sprint — Left Shift drains stamina; 2-second cooldown before regen
+  // sprintKey known early — needed for movement multipliers
   const sprintKey = !chalActive && keys['ShiftLeft'] && !staminaDepleted && stamina > 0;
-  const sprinting = sprintKey && player.onGround;
-  player.sprinting = sprinting;
-  if (sprinting) {
-    stamina = Math.max(0, stamina - 0.0038);          // ~4.4 s to fully drain
-    if (stamina <= 0) { stamina = 0; staminaDepleted = true; staminaCooldown = 120; }
-  } else {
-    const canRegen = player.onGround || player.inHouse;
-    if (staminaDepleted) {
-      if (canRegen && --staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
-    } else if (canRegen) {
-      stamina = Math.min(1, stamina + 0.0018);         // ~9 s to fully regen
-    }
-  }
-  const sm    = sprinting ? 1.65 : 1;                  // acceleration multiplier
-  // Speed cap uses sprintKey so briefly-airborne downhill steps don't clamp momentum
-  const smCap = sprintKey ? 1.65 : 1;
+  // Use previous-frame onGround for movement so downhill steps feel smooth
+  const sprintingMove = sprintKey && player.onGround;
+  player.sprinting = sprintingMove;
+  const sm    = sprintingMove ? 1.65 : 1;
+  const smCap = sprintKey     ? 1.65 : 1;
 
   if (!chalActive && goLeft())  { player.vx -= 0.90 * sm; player.facing = -1; }
   if (!chalActive && goRight()) { player.vx += 0.90 * sm; player.facing =  1; }
@@ -437,15 +433,7 @@ function updatePlayer() {
   player.x += player.vx;
   player.y += player.vy;
 
-  const walkStep = sprinting ? 14 : 22;                 // frames between footstep sfx
-  if (Math.abs(player.vx) > 0.5 && player.onGround) {
-    if (++player.walkT >= walkStep) {
-      player.walkT = 0; player.walkF = (player.walkF + 1) % 6;
-      WindAudio.footstep(sprinting);
-    }
-  } else if (player.onGround) { player.walkF = 0; }
-
-  // Top collisions
+  // Top collisions — after this, player.onGround is current-frame accurate
   player.onGround = false;
   for (const p of platforms) {
     const prevBot = player.y + player.h - player.vy;
@@ -459,6 +447,28 @@ function updatePlayer() {
       player.onGround = true;
     }
   }
+
+  // Stamina — drain only while sprinting on ground; regen only on ground (not airborne)
+  const sprinting = sprintKey && player.onGround;
+  player.sprinting = sprinting;
+  if (sprinting) {
+    stamina = Math.max(0, stamina - 0.0038);
+    if (stamina <= 0) { stamina = 0; staminaDepleted = true; staminaCooldown = 120; }
+  } else if (player.onGround) {
+    if (staminaDepleted) {
+      if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
+    } else {
+      stamina = Math.min(1, stamina + 0.0018);
+    }
+  }
+
+  const walkStep = sprinting ? 14 : 22;                 // frames between footstep sfx
+  if (Math.abs(player.vx) > 0.5 && player.onGround) {
+    if (++player.walkT >= walkStep) {
+      player.walkT = 0; player.walkF = (player.walkF + 1) % 6;
+      WindAudio.footstep(sprinting);
+    }
+  } else if (player.onGround) { player.walkF = 0; }
 
   if (player.x < 0) { player.x = 0; player.vx = 0; } // don't go left of start
   const prevReach = maxReach;
