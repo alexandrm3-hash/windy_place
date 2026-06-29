@@ -305,7 +305,7 @@ function extendMap() {
 }
 
 function trimPlatforms() {
-  const cut = player.x - 750;
+  const cut = player.x - 6000;  // keep terrain far behind so backtracking works
   platforms = platforms.filter(p => p.x + p.w >= cut);
   houses    = houses.filter(h => h.alpha > 0.02 && h.x + h.w >= cut - 400);
 }
@@ -445,7 +445,7 @@ function updatePlayer() {
     }
   }
 
-  if (player.x < 0) { player.x = 0; player.vx = 0; }
+  if (player.x < 0) { player.x = 0; player.vx = 0; } // don't go left of start
   if (player.x > maxReach) maxReach = player.x;
 
   // Camera — follow both X and Y smoothly
@@ -2743,8 +2743,8 @@ function drawHUD() {
   ctx.textAlign = 'center'; ctx.fillText(wi.label, mx, 29);
   ctx.restore();
 
-  // Score + tier (top left)
-  const score = Math.floor(maxReach / 12);
+  // Score + tier (top left) — shows current position; maxReach tracks best
+  const score = Math.floor(player.x / 12);
   const tier  = getWindTier();
   const tierC = ['#5dade2','#6bcb77','#e8c84a','#e8902a','#e84040','#cc2020','#cc44ff'][tier] || '#cc44ff';
 
