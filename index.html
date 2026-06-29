@@ -405,7 +405,7 @@ function updatePlayer() {
   player.x += player.vx;
   player.y += player.vy;
 
-  const walkStep = sprinting ? 4 : 7;                  // faster legs when running
+  const walkStep = sprinting ? 14 : 22;                 // frames between footstep sfx
   if (Math.abs(player.vx) > 0.5 && player.onGround) {
     if (++player.walkT >= walkStep) {
       player.walkT = 0; player.walkF = (player.walkF + 1) % 6;
@@ -2383,73 +2383,135 @@ const WindAudio = (() => {
 
   function footstep(running) {
     if (!ac) return;
-    const t = ac.currentTime;
+    const t  = ac.currentTime;
     const sr = ac.sampleRate;
+    // Slight randomness per step so no two sound identical
+    const rv = () => 0.82 + Math.random() * 0.36;
+
+    function noise(len) {
+      const b = ac.createBuffer(1, len, sr);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      return b;
+    }
+    function play(buf, nodes, gain, when) {
+      const s = ac.createBufferSource(); s.buffer = buf;
+      let n = s;
+      for (const f of nodes) { n.connect(f); n = f; }
+      const g = ac.createGain(); g.gain.value = gain;
+      n.connect(g); g.connect(master); s.start(when);
+    }
+    function bpf(freq, q) {
+      const f = ac.createBiquadFilter(); f.type = 'bandpass';
+      f.frequency.value = freq; f.Q.value = q; return f;
+    }
+    function lpf(freq) {
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq; return f;
+    }
+    function hpf(freq) {
+      const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = freq; return f;
+    }
 
     if (!running) {
-      // ── Walking: soft muffled snow squeak ──────────────────
-      // Gentle noise burst, low-mid filtered — sounds like snow compressing
-      const len = Math.floor(sr * 0.095);
-      const buf = ac.createBuffer(1, len, sr);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) {
-        const env = Math.pow(1 - i / len, 1.4) * Math.min(1, i / (len * 0.04));
-        d[i] = (Math.random() * 2 - 1) * env;
-      }
-      const s  = ac.createBufferSource(); s.buffer = buf;
-      const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 180;
-      const lp = ac.createBiquadFilter(); lp.type = 'lowpass';  lp.frequency.value = 1400;
-      const g  = ac.createGain(); g.gain.value = 0.11;
-      s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(master);
-      s.start(t);
+      // ── Walking on snow: three layered components ───────────
 
-      // Subtle snow squeak tone — pitched chirp that rises slightly
-      const sqLen = Math.floor(sr * 0.06);
-      const sqBuf = ac.createBuffer(1, sqLen, sr);
-      const sq = sqBuf.getChannelData(0);
-      for (let i = 0; i < sqLen; i++) {
-        const env = Math.pow(1 - i / sqLen, 2.8) * Math.min(1, i / (sqLen * 0.06));
-        const freq = 420 + (i / sqLen) * 160;
-        sq[i] = Math.sin(2 * Math.PI * freq * i / sr) * env * 0.28;
-        sq[i] += (Math.random() * 2 - 1) * env * 0.12;
+      // 1. Soft body impact — low thud as weight transfers onto foot
+      const impLen = Math.floor(sr * 0.10);
+      const impBuf = ac.createBuffer(1, impLen, sr);
+      const impD   = impBuf.getChannelData(0);
+      for (let i = 0; i < impLen; i++) {
+        const p  = i / impLen;
+        const env = Math.pow(1 - p, 2.2) * Math.min(1, p / 0.015);
+        // Pitched thud: sine drops from ~70 to 28 Hz
+        const freq = 70 - p * 42;
+        impD[i] = Math.sin(2 * Math.PI * freq * i / sr) * env * 0.7
+                + (Math.random() * 2 - 1) * env * 0.3;
       }
-      const ss = ac.createBufferSource(); ss.buffer = sqBuf;
-      const sg = ac.createGain(); sg.gain.value = 0.055;
-      ss.connect(sg); sg.connect(master);
-      ss.start(t);
+      play(impBuf, [lpf(220)], 0.18 * rv(), t);
+
+      // 2. Snow compression crunch — mid-freq noise with resonant peak
+      //    Sounds like ice crystals fracturing under slow weight
+      const crLen = Math.floor(sr * 0.13);
+      const crBuf = ac.createBuffer(1, crLen, sr);
+      const crD   = crBuf.getChannelData(0);
+      for (let i = 0; i < crLen; i++) {
+        const p   = i / crLen;
+        const env = Math.pow(1 - p, 1.6) * Math.min(1, p / 0.02);
+        crD[i] = (Math.random() * 2 - 1) * env;
+      }
+      const crBP = bpf(700 * rv(), 1.8);
+      play(crBuf, [hpf(260), crBP, lpf(2200)], 0.14, t + 0.005);
+
+      // 3. Surface squeak — compressed snow singing under the boot
+      //    Short tonal burst that slides up slightly in pitch
+      const sqLen = Math.floor(sr * 0.07);
+      const sqBuf = ac.createBuffer(1, sqLen, sr);
+      const sqD   = sqBuf.getChannelData(0);
+      const sqBase = 380 + Math.random() * 120;
+      let sqPhase = 0;
+      for (let i = 0; i < sqLen; i++) {
+        const p   = i / sqLen;
+        const env = Math.pow(1 - p, 3.5) * Math.min(1, p / 0.04);
+        const freq = sqBase + p * 90;
+        sqPhase  += (2 * Math.PI * freq) / sr;
+        sqD[i]    = Math.sin(sqPhase) * env * 0.55
+                  + (Math.random() * 2 - 1) * env * 0.15;
+      }
+      const sqBP = bpf(sqBase, 4.5);
+      play(sqBuf, [sqBP], 0.045 * rv(), t + 0.008);
 
     } else {
-      // ── Running: heavy boot thud + sharp crunch ─────────────
-      // Low thump — boot slamming snow hard, pitch-drops like impact
-      const thudLen = Math.floor(sr * 0.14);
-      const tbuf = ac.createBuffer(1, thudLen, sr);
-      const td = tbuf.getChannelData(0);
-      for (let i = 0; i < thudLen; i++) {
-        const env = Math.pow(1 - i / thudLen, 1.2) * Math.min(1, i / (thudLen * 0.01));
-        const freq = 110 - (i / thudLen) * 80; // pitch falls 110→30 Hz
-        td[i] = Math.sin(2 * Math.PI * freq * i / sr) * env;
-        td[i] += (Math.random() * 2 - 1) * env * 0.18; // body resonance noise
-      }
-      const ts = ac.createBufferSource(); ts.buffer = tbuf;
-      const tlp = ac.createBiquadFilter(); tlp.type = 'lowpass'; tlp.frequency.value = 280;
-      const tg = ac.createGain(); tg.gain.value = 0.42;
-      ts.connect(tlp); tlp.connect(tg); tg.connect(master);
-      ts.start(t);
+      // ── Sprinting on snow: four layered components ──────────
 
-      // Crisp crunch layer — short high-freq burst on top of thud
-      const crLen = Math.floor(sr * 0.048);
-      const cbuf = ac.createBuffer(1, crLen, sr);
-      const cd = cbuf.getChannelData(0);
-      for (let i = 0; i < crLen; i++) {
-        const env = Math.pow(1 - i / crLen, 3.2) * Math.min(1, i / (crLen * 0.02));
-        cd[i] = (Math.random() * 2 - 1) * env;
+      // 1. Hard boot thud — sharp pitch-drop sine, heavy impact
+      const thLen = Math.floor(sr * 0.16);
+      const thBuf = ac.createBuffer(1, thLen, sr);
+      const thD   = thBuf.getChannelData(0);
+      let thPhase = 0;
+      for (let i = 0; i < thLen; i++) {
+        const p   = i / thLen;
+        const env = Math.pow(1 - p, 1.1) * Math.min(1, p / 0.008);
+        const freq = 130 - p * 100; // 130→30 Hz hard drop
+        thPhase  += (2 * Math.PI * Math.max(20, freq)) / sr;
+        thD[i]    = Math.sin(thPhase) * env * 0.75
+                  + (Math.random() * 2 - 1) * env * 0.25;
       }
-      const cs  = ac.createBufferSource(); cs.buffer = cbuf;
-      const chp = ac.createBiquadFilter(); chp.type = 'highpass'; chp.frequency.value = 1800;
-      const clp = ac.createBiquadFilter(); clp.type = 'lowpass';  clp.frequency.value = 6000;
-      const cg  = ac.createGain(); cg.gain.value = 0.26;
-      cs.connect(chp); chp.connect(clp); clp.connect(cg); cg.connect(master);
-      cs.start(t);
+      play(thBuf, [lpf(300)], 0.48 * rv(), t);
+
+      // 2. Aggressive ice-crystal crunch — fast transient burst
+      //    Snow shattering under fast heavy impact
+      const icLen = Math.floor(sr * 0.055);
+      const icBuf = noise(icLen);
+      const icD   = icBuf.getChannelData(0);
+      for (let i = 0; i < icLen; i++) {
+        const p   = i / icLen;
+        const env = Math.pow(1 - p, 4.0) * Math.min(1, p / 0.01);
+        icD[i]   *= env;
+      }
+      play(icBuf, [hpf(1200), bpf(2400 * rv(), 0.9), lpf(7000)], 0.30, t + 0.002);
+
+      // 3. Mid crunch body — the main snow texture, between thud and crunch
+      const mcLen = Math.floor(sr * 0.09);
+      const mcBuf = noise(mcLen);
+      const mcD   = mcBuf.getChannelData(0);
+      for (let i = 0; i < mcLen; i++) {
+        const p   = i / mcLen;
+        const env = Math.pow(1 - p, 2.0) * Math.min(1, p / 0.012);
+        mcD[i]   *= env;
+      }
+      play(mcBuf, [bpf(650 * rv(), 1.4), lpf(2800)], 0.22, t + 0.004);
+
+      // 4. Ejected snow scatter — tiny high flutter as snow sprays out
+      //    Delayed slightly, sounds like chunks scattering away from boot
+      const scLen = Math.floor(sr * 0.11);
+      const scBuf = noise(scLen);
+      const scD   = scBuf.getChannelData(0);
+      for (let i = 0; i < scLen; i++) {
+        const p   = i / scLen;
+        const env = Math.pow(1 - p, 1.3) * Math.min(1, p / 0.03) * (p < 0.25 ? 0 : 1);
+        scD[i]   *= env;
+      }
+      play(scBuf, [hpf(2800), lpf(9000)], 0.10 * rv(), t + 0.018);
     }
   }
 
