@@ -41,10 +41,9 @@
 </div>
 
 <style>
-#test-btn {
+#test-btn, #spawn-btn {
   position: absolute;
   top: 10px;
-  right: 10px;
   font-family: 'Courier New', monospace;
   font-size: 9px;
   letter-spacing: 0.15em;
@@ -56,7 +55,9 @@
   cursor: pointer;
   z-index: 10;
 }
-#test-btn:hover { background: rgba(0,0,0,0.75); }
+#test-btn { right: 10px; }
+#spawn-btn { right: 90px; color: rgba(160,255,180,0.80); border-color: rgba(160,255,180,0.22); }
+#test-btn:hover, #spawn-btn:hover { background: rgba(0,0,0,0.75); }
 #test-menu {
   display: none;
   position: absolute;
@@ -88,8 +89,48 @@
 #test-menu button:hover { background: rgba(255,255,255,0.08); }
 #test-menu button.hyper { color: #cc44ff; }
 #test-menu button.void  { color: #cc44ff; text-shadow: 0 0 8px #aa00ff; }
+#spawn-menu {
+  display: none;
+  position: absolute;
+  top: 34px;
+  right: 90px;
+  background: rgba(6,12,24,0.92);
+  border: 1px solid rgba(160,255,180,0.18);
+  border-radius: 5px;
+  overflow: hidden;
+  z-index: 10;
+}
+#spawn-menu.open { display: block; }
+#spawn-menu button {
+  display: block;
+  width: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 6px 16px;
+  background: none;
+  color: rgba(180,215,240,0.80);
+  border: none;
+  border-bottom: 1px solid rgba(160,255,180,0.08);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+#spawn-menu button:last-child { border-bottom: none; }
+#spawn-menu button:hover { background: rgba(255,255,255,0.08); }
+#spawn-menu button.sn-normal   { color: #aaddff; }
+#spawn-menu button.sn-metal    { color: #aabbcc; }
+#spawn-menu button.sn-bunker   { color: #ffcc44; }
+#spawn-menu button.sn-research { color: #44ffcc; }
 </style>
 
+<div id="spawn-btn" onclick="toggleSpawnMenu()">🏠 SPAWN</div>
+<div id="spawn-menu">
+  <button class="sn-normal"   onclick="spawnHouseType('normal');closeSpawnMenu()">🏠 Normal house</button>
+  <button class="sn-metal"    onclick="spawnHouseType('metal');closeSpawnMenu()">🔩 Metal house</button>
+  <button class="sn-bunker"   onclick="spawnHouseType('bunker');closeSpawnMenu()">🛡 Bunker</button>
+  <button class="sn-research" onclick="spawnHouseType('research');closeSpawnMenu()">🔬 Research base</button>
+</div>
 <div id="test-btn" onclick="toggleTestMenu()">⚡ WIND</div>
 <div id="test-menu">
   <button onclick="forceWind(0);closeTestMenu()">CALM</button>
@@ -258,6 +299,7 @@ function baseGroundY(wx) {
 
 // ── Global state ─────────────────────────────────────────
 let gState, player, wind, cam, particles, snowflakes, frame;
+let researchPanic = []; // per-worker panic state for void storm running animation
 let secretTierTimer = 0;   // frames to show the secret tier unlock message
 let terrainDrama = 0;      // 0–1+ smoothly tracks tier; controls slope steepness
 let windDebris = [];
@@ -378,6 +420,12 @@ function init() {
   staminaCooldown  = 0;
   craters          = [];
   craterParticles  = [];
+  // 8 workers, each with an independent running x and direction
+  researchPanic = Array.from({length:8}, (_, i) => ({
+    x: 98 + i * 90,   // initial x roughly matching desk positions
+    dir: i % 2 === 0 ? 1 : -1,
+    speed: 1.4 + (i % 3) * 0.5,
+  }));
   initPlatforms();
 }
 
@@ -3926,8 +3974,83 @@ function drawResearchInterior() {
     ctx.fillStyle=`rgba(0,160,120,${0.4+Math.sin(f*0.04+di)*0.2})`;
     ctx.fillRect(smsx,smsy+smsh-4,smsw*(0.4+Math.sin(f*0.03+di*0.5)*0.35),3);
 
-    // Draw the researcher
-    researcher(dx+46, dy, dk.fac, dk.sd, dk.bob, dk.var);
+    // Draw the researcher — seated normally, or panicking during void storm
+    if (!isVoidNow) {
+      researcher(dx+46, dy, dk.fac, dk.sd, dk.bob, dk.var);
+    }
+    // (void-storm running is drawn separately below, outside the desk loop)
+  }
+
+  // ── VOID STORM PANIC — workers stand up and run ──────────
+  if (isVoidNow) {
+    // Ensure array is populated (safety for saves/loads)
+    if (!researchPanic || researchPanic.length < 8) {
+      researchPanic = Array.from({length:8}, (_, i) => ({
+        x: 98 + i * 90, dir: i % 2 === 0 ? 1 : -1, speed: 1.4 + (i%3)*0.5,
+      }));
+    }
+    const roomLeft = 94, roomRight = IW - 92;
+    for (let wi = 0; wi < 8; wi++) {
+      const pw = researchPanic[wi];
+      // Advance position
+      pw.x += pw.dir * pw.speed * (1 + Math.sin(f * 0.03 + wi) * 0.3);
+      if (pw.x > roomRight) { pw.x = roomRight; pw.dir = -1; }
+      if (pw.x < roomLeft)  { pw.x = roomLeft;  pw.dir =  1; }
+
+      const wx2 = pw.x;
+      const wy  = deskY;
+      const phase2 = (f * 0.18 + wi * 1.1) % (Math.PI * 2);
+      const sc = '#d0dff0';
+      ctx.save();
+      ctx.translate(wx2, wy);
+      if (pw.dir < 0) ctx.scale(-1, 1);
+      ctx.strokeStyle = sc; ctx.fillStyle = sc;
+      ctx.lineWidth = 2.0; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+      // Running legs
+      const rH =  Math.sin(phase2)           * 0.75;
+      const lH =  Math.sin(phase2 + Math.PI) * 0.75;
+      const rK = -Math.max(0, -Math.sin(phase2))           * 1.0;
+      const lK = -Math.max(0, -Math.sin(phase2 + Math.PI)) * 1.0;
+      const UL = 9, LL = 8;
+      const drawSeg = (ox, oy, a1, l1, a2, l2) => {
+        const jx = ox + Math.sin(a1)*l1, jy = oy + Math.cos(a1)*l1;
+        const ex = jx + Math.sin(a1+a2)*l2, ey = jy + Math.cos(a1+a2)*l2;
+        ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(jx,jy); ctx.lineTo(ex,ey); ctx.stroke();
+      };
+      const bob2 = Math.abs(Math.sin(phase2 * 2)) * 2;
+      const NY = -10 - bob2, HY = 2 + bob2 * 0.4;
+      drawSeg(0, HY, rH, UL, rK, LL);
+      drawSeg(0, HY, lH, UL, lK, LL);
+
+      // Spine
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(0, NY); ctx.lineTo(0, HY); ctx.stroke();
+
+      // Running arms (pumping)
+      const rA = Math.sin(phase2 + Math.PI) * 0.65;
+      const lA = Math.sin(phase2)           * 0.65;
+      ctx.lineWidth = 2.0;
+      drawSeg(0, NY+4, rA, 8, 0.4, 7);
+      drawSeg(0, NY+4, lA, 8, 0.4, 7);
+
+      // Torus head
+      const hcy = NY - 8;
+      ctx.fillStyle = sc;
+      ctx.beginPath();
+      ctx.arc(0, hcy, 6.5, 0, Math.PI*2, false);
+      ctx.arc(0, hcy, 4,   0, Math.PI*2, true);
+      ctx.fill('evenodd');
+      ctx.strokeStyle = sc; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(0, hcy, 6.5, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, hcy, 4,   0, Math.PI*2); ctx.stroke();
+
+      // Panic expression — open mouth arc
+      ctx.strokeStyle = '#0a0d14'; ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.arc(1, hcy + 1, 2.5, 0.1, Math.PI - 0.1); ctx.stroke();
+
+      ctx.restore();
+    }
   }
 
   // ── COFFEE / BREAK AREA (between racks and desks) ────────
@@ -3982,6 +4105,135 @@ function drawResearchInterior() {
   }
   ctx.fillStyle='#44220a'; ctx.font='bold 6px Courier New'; ctx.textAlign='center';
   ctx.fillText('NOTICE BOARD',nbX+nbW/2,nbY+nbH+10);
+
+  // ── EXIT CHECK WINDOW (right wall) ──────────────────────────
+  // Tells the player at a glance whether it's safe to step outside.
+  {
+    const tier = getWindTier();
+    const safe   = tier <= 2;
+    const caution= tier >= 3 && tier <= 4;
+    const danger = tier >= 5 && !isVoidNow;
+    const voidDgr= isVoidNow;
+
+    const ewX = IW - 84, ewY = floorY - 210, ewW = 68, ewH = 130;
+
+    // Wall recess / surround
+    ctx.fillStyle = '#0a0c18';
+    ctx.fillRect(ewX - 6, ewY - 22, ewW + 12, ewH + 38);
+    ctx.fillStyle = '#111520';
+    ctx.fillRect(ewX - 4, ewY - 20, ewW + 8, ewH + 34);
+
+    // "EXIT CHECK" label above
+    ctx.fillStyle = '#334466'; ctx.font = 'bold 6px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('EXIT CHECK', ewX + ewW/2, ewY - 10);
+    ctx.strokeStyle = '#223'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(ewX, ewY - 6); ctx.lineTo(ewX + ewW, ewY - 6); ctx.stroke();
+
+    // Window frame — thick metal border
+    ctx.fillStyle = '#0d1020';
+    ctx.beginPath(); ctx.roundRect(ewX - 4, ewY - 4, ewW + 8, ewH + 8, 4); ctx.fill();
+    ctx.strokeStyle = '#1e2438'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(ewX - 4, ewY - 4, ewW + 8, ewH + 8, 4); ctx.stroke();
+
+    // Clip to glass
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ewX, ewY, ewW, ewH); ctx.clip();
+
+    // Sky
+    const ewSky = ctx.createLinearGradient(ewX, ewY, ewX, ewY + ewH * 0.7);
+    if (voidDgr) {
+      ewSky.addColorStop(0, '#03010a'); ewSky.addColorStop(1, '#0d0620');
+    } else if (danger) {
+      ewSky.addColorStop(0, '#0a0314'); ewSky.addColorStop(1, '#180828');
+    } else if (caution) {
+      ewSky.addColorStop(0, '#080e1c'); ewSky.addColorStop(1, '#0e1830');
+    } else {
+      ewSky.addColorStop(0, '#0a1428'); ewSky.addColorStop(1, '#1a2e4a');
+    }
+    ctx.fillStyle = ewSky; ctx.fillRect(ewX, ewY, ewW, ewH);
+
+    // Ground
+    ctx.fillStyle = safe ? '#0e1a2e' : '#060410';
+    ctx.fillRect(ewX, ewY + ewH * 0.68, ewW, ewH * 0.32);
+    ctx.fillStyle = safe ? '#0c1828' : '#040210';
+    ctx.fillRect(ewX, ewY + ewH * 0.76, ewW, ewH * 0.24);
+
+    // Wind streaks
+    const streakColor = voidDgr ? 'rgba(140,60,255,0.5)' : danger ? 'rgba(180,100,255,0.35)' : caution ? 'rgba(140,160,220,0.35)' : 'rgba(180,210,255,0.25)';
+    ctx.fillStyle = streakColor;
+    const streakSpeed = 2 + Math.abs(wind.force) * 3;
+    for (let si = 0; si < 14; si++) {
+      const sx2 = ewX + ((si * 47 + f * streakSpeed) % (ewW + 30)) - 10;
+      const sy2 = ewY + 5 + (si * 31) % (ewH * 0.65);
+      const sl  = 6 + (si % 4) * 5;
+      ctx.beginPath(); ctx.ellipse(sx2, sy2, sl, 0.6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Tornado silhouette if active
+    if (tornado && tornado.alpha > 0.05) {
+      const tScale2 = tornado.scale || 1;
+      const tWX = ewX + ((tornado.x - cam.x) / W) * ewW;
+      const tBaseY = ewY + ewH * 0.74;
+      const tH2 = ewH * 0.6 * tScale2, tW2 = ewW * 0.18 * tScale2;
+      for (let band = 0; band < 10; band++) {
+        const t2 = band / 9;
+        const bY = tBaseY - tH2 * (1 - t2);
+        const bW = tW2 * (1 - t2) + 2;
+        ctx.strokeStyle = voidDgr ? `rgba(120,20,255,${(1-t2)*0.7*tornado.alpha})` : `rgba(60,70,120,${(1-t2)*0.6*tornado.alpha})`;
+        ctx.lineWidth = 1 + (1 - t2) * 1.5;
+        ctx.beginPath();
+        ctx.ellipse(tWX + Math.sin(tornado.angle * 2 + t2 * 10) * bW * 0.3, bY, bW, bW * 0.14, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Glare
+    ctx.fillStyle = 'rgba(200,220,255,0.03)';
+    ctx.beginPath();
+    ctx.moveTo(ewX, ewY); ctx.lineTo(ewX + ewW * 0.35, ewY);
+    ctx.lineTo(ewX + ewW * 0.15, ewY + ewH * 0.55); ctx.lineTo(ewX, ewY + ewH * 0.55);
+    ctx.closePath(); ctx.fill();
+
+    ctx.restore(); // end clip
+
+    // Window cross-bar
+    ctx.strokeStyle = '#181c2c'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ewX, ewY + ewH / 2); ctx.lineTo(ewX + ewW, ewY + ewH / 2); ctx.stroke();
+
+    // Condensation frost at bottom
+    ctx.fillStyle = 'rgba(150,180,220,0.07)';
+    ctx.fillRect(ewX, ewY + ewH - 10, ewW, 10);
+
+    // ── STATUS INDICATOR below window ──────────────────────────
+    const siY = ewY + ewH + 10;
+    // Coloured status light (big pulsing dot)
+    const statusColor = voidDgr ? `rgba(180,0,255,${0.8+Math.sin(f*0.4)*0.2})`
+                      : danger  ? `rgba(255,40,40,${0.8+Math.sin(f*0.25)*0.2})`
+                      : caution ? `rgba(255,180,0,${0.8+Math.sin(f*0.12)*0.15})`
+                      :           `rgba(0,220,80,${0.85+Math.sin(f*0.07)*0.1})`;
+    // Glow
+    const glowR = ctx.createRadialGradient(ewX + ewW/2, siY + 10, 0, ewX + ewW/2, siY + 10, 20);
+    glowR.addColorStop(0, statusColor.replace(/[\d.]+\)$/, '0.35)'));
+    glowR.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glowR; ctx.fillRect(ewX + ewW/2 - 20, siY, 40, 22);
+    // Dot
+    ctx.fillStyle = statusColor;
+    ctx.beginPath(); ctx.arc(ewX + ewW/2, siY + 10, 7, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(ewX + ewW/2, siY + 10, 7, 0, Math.PI*2); ctx.stroke();
+
+    // Status text
+    const statusText = voidDgr ? '!! VOID !!' : danger ? 'DANGER' : caution ? 'CAUTION' : '✓  SAFE';
+    const statusTxtColor = voidDgr ? '#cc44ff' : danger ? '#ff4444' : caution ? '#ffcc00' : '#44ff88';
+    ctx.fillStyle = statusTxtColor; ctx.font = `bold 7px Courier New`; ctx.textAlign = 'center';
+    ctx.fillText(statusText, ewX + ewW/2, siY + 24);
+
+    // Wind readout
+    ctx.fillStyle = 'rgba(120,160,200,0.7)'; ctx.font = '6px Courier New';
+    ctx.fillText(`WIND T${tier}  ${Math.abs(wind.force).toFixed(1)}u`, ewX + ewW/2, siY + 34);
+
+    ctx.textAlign = 'left';
+  }
 
   // ── POWER CONDUIT on left wall ────────────────────────────
   ctx.strokeStyle='#223344'; ctx.lineWidth=5;
@@ -6958,9 +7210,34 @@ function toggleTestMenu() {
 function closeTestMenu() {
   document.getElementById('test-menu').classList.remove('open');
 }
+function toggleSpawnMenu() {
+  document.getElementById('spawn-menu').classList.toggle('open');
+}
+function closeSpawnMenu() {
+  document.getElementById('spawn-menu').classList.remove('open');
+}
+function spawnHouseType(type) {
+  if (gState !== 'playing') init();
+  const isResearch = type === 'research';
+  const isBunker   = type === 'bunker';
+  const hw2      = isResearch ? 160 : isBunker ? 90 : 55;
+  const hYOffset = isResearch ? 240 : isBunker ? 175 : 120;
+  const hWidth   = isResearch ? 320 : isBunker ? 180 : 110;
+  // Place it just ahead of the player (about 200px in front)
+  const bx = player.x + player.w / 2 + 200;
+  const gy = baseGroundY(bx + hw2);
+  houses.push({
+    x: bx, y: gy - hYOffset, w: hWidth,
+    type,
+    flying: false, flyTimer: 80, flyDelay: 80,
+    vy: 0, vx: 0, angle: 0, alpha: 1,
+  });
+}
 document.addEventListener('click', e => {
   if (!e.target.closest('#test-btn') && !e.target.closest('#test-menu'))
     closeTestMenu();
+  if (!e.target.closest('#spawn-btn') && !e.target.closest('#spawn-menu'))
+    closeSpawnMenu();
 });
 
 function forceWind(stateIndex) {
