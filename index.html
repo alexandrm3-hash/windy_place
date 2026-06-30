@@ -341,9 +341,10 @@ function extendMap() {
 
 function trimPlatforms() {
   const cut = player.x - 6000;  // keep terrain far behind so backtracking works
-  platforms   = platforms.filter(p => p.x + p.w >= cut);
-  houses      = houses.filter(h => h.alpha > 0.02 && h.x + h.w >= cut - 400);
-  decorations = decorations.filter(d => d.alpha > 0.02 && d.x >= cut - 100);
+  platforms    = platforms.filter(p => p.x + p.w >= cut);
+  houses       = houses.filter(h => h.alpha > 0.02 && h.x + h.w >= cut - 400);
+  decorations  = decorations.filter(d => d.alpha > 0.02 && d.x >= cut - 100);
+  craters      = craters.filter(cr => cr.wx + cr.radius >= cut);
 }
 
 // ── Init ─────────────────────────────────────────────────
@@ -459,18 +460,45 @@ function updatePlayer() {
   player.x += player.vx;
   player.y += player.vy;
 
-  // Top collisions — after this, player.onGround is current-frame accurate
+  // Ground collision — continuous baseGroundY sample, exact match to visual terrain
+  const wasOnGround = player.onGround;
   player.onGround = false;
-  for (const p of platforms) {
-    const prevBot = player.y + player.h - player.vy;
+  {
+    const pcx = player.x + player.w * 0.5;
+
+    // Compute the actual surface Y the player stands on (ground + optional crater dip)
+    let surfaceY = baseGroundY(pcx);
+    for (const cr of craters) {
+      const dx = pcx - cr.wx;
+      if (Math.abs(dx) < cr.radius) {
+        const t   = Math.min(1, cr.age / 60);
+        const dip = Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
+        surfaceY += dip;
+      }
+    }
+
     const currBot = player.y + player.h;
-    // Allow a generous snap-down tolerance so downhill steps don't snag the player
-    const snapTol = Math.abs(player.vx) > 1 ? 18 : 5;
-    if (player.x + player.w > p.x && player.x < p.x + p.w &&
-        currBot >= p.y && prevBot <= p.y + snapTol && player.vy >= 0) {
-      player.y = p.y - player.h;
-      player.vy = 0;
+    const prevBot = currBot - player.vy;
+    // When already grounded use a big step-down tolerance so slopes are followed smoothly
+    const snapTol = wasOnGround ? 48 : (Math.abs(player.vx) > 1 ? 18 : 5);
+    if (currBot >= surfaceY && prevBot <= surfaceY + snapTol && player.vy >= 0) {
+      player.y    = surfaceY - player.h;
+      player.vy   = 0;
       player.onGround = true;
+    }
+
+    // Ledge platforms (h <= 20) — keep discrete collision for special surfaces
+    for (const p of platforms) {
+      if (p.h > 20) continue;
+      const pCurrBot = player.y + player.h;
+      const pPrevBot = pCurrBot - player.vy;
+      const pSnap    = Math.abs(player.vx) > 1 ? 18 : 5;
+      if (player.x + player.w > p.x && player.x < p.x + p.w &&
+          pCurrBot >= p.y && pPrevBot <= p.y + pSnap && player.vy >= 0) {
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+      }
     }
   }
 
@@ -482,8 +510,8 @@ function updatePlayer() {
       const cwx = Math.floor((player.x + player.w * 0.5) / CRACK_TILE) * CRACK_TILE;
       const hv  = Math.abs(Math.sin(cwx * 0.017 + 1 * 2.718));
       const sizeRoll = Math.abs(Math.sin(cwx * 0.017 + 1 * 2.718));
-      const alreadyCrater = craters.some(cr => Math.abs(cr.wx - cwx) < 24);
-      const collapseChance = (tier - 2) * 0.022 * (sizeRoll > 0.85 ? 3 : 1);
+      const alreadyCrater = craters.some(cr => Math.abs(cr.wx - cwx) < cr.radius * 2 + 80);
+      const collapseChance = (tier - 2) * 0.003 * (sizeRoll > 0.85 ? 2 : 1);
       if (!alreadyCrater && Math.random() < collapseChance) {
         spawnCrater(cwx + CRACK_TILE * 0.5);
       }
@@ -576,6 +604,17 @@ function updateDecorations() {
       if (d.y - cam.y < -120) d.alpha -= 0.04;
     } else if (isTornado) {
       d.flying = true;
+    } else {
+      // Snap to current terrain including crater dips
+      let dy = baseGroundY(d.x);
+      for (const cr of craters) {
+        const dx = d.x - cr.wx;
+        if (Math.abs(dx) < cr.radius) {
+          const t   = Math.min(1, cr.age / 60);
+          dy += Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
+        }
+      }
+      d.y = dy;
     }
   }
 }
@@ -604,6 +643,20 @@ function updateHouses() {
       }
     } else if (!isStorm || (h.type !== 'normal' && !isHypercane) || (h.type === 'bunker' && !isVoidStorm)) {
       h.flyTimer = h.flyDelay;
+      // Snap to current terrain (including crater dips) so houses fall into craters
+      const hw2 = h.type === 'bunker' ? 90 : 55;
+      const hYOffset = h.type === 'bunker' ? 175 : 120;
+      const hcx = h.x + hw2;
+      let hGroundY = baseGroundY(hcx);
+      for (const cr of craters) {
+        const dx = hcx - cr.wx;
+        if (Math.abs(dx) < cr.radius) {
+          const t   = Math.min(1, cr.age / 60);
+          const dip = Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
+          hGroundY += dip;
+        }
+      }
+      h.y = hGroundY - hYOffset;
     }
   }
 }
@@ -660,10 +713,24 @@ function updateTornado() {
     const chaseSpeed = isVoidStorm ? 0.072 : tScale > 1.2 ? 0.030 : 0.018;
     tornado.x += (targetX - tornado.x) * chaseSpeed;
     tornado.y  = baseGroundY(tornado.x);
+    for (const cr of craters) {
+      const dx = tornado.x - cr.wx;
+      if (Math.abs(dx) < cr.radius) {
+        const t   = Math.min(1, cr.age / 60);
+        tornado.y += Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
+      }
+    }
   } else {
     tornado.alpha = Math.max(0, tornado.alpha - 0.013);
     tornado.x += wind.force * 10;
     tornado.y  = baseGroundY(tornado.x);
+    for (const cr of craters) {
+      const dx = tornado.x - cr.wx;
+      if (Math.abs(dx) < cr.radius) {
+        const t   = Math.min(1, cr.age / 60);
+        tornado.y += Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
+      }
+    }
   }
 
   // Update orbiting debris
@@ -796,16 +863,16 @@ function updateWindDebris() {
 
 // ── Crater system ─────────────────────────────────────────
 function spawnCrater(wx) {
-  const tier = getWindTier();
-  const radius = 40 + tier * 14 + Math.random() * 25;
-  const depth  = 18 + tier * 8  + Math.random() * 12;
-  craters.push({ wx, radius, depth, age: 0, maxAge: 60 });
+  const tier   = getWindTier();
+  const radius = 60 + tier * 40 + Math.random() * 25;
+  const depth  = 18 + tier * 18 + Math.random() * 14;
+  craters.push({ wx, radius, depth, age: 0 });
 
-  // If player is standing over the crater, launch them off the crumbling edge
+  // If player is standing over the crater, launch them upward
   const playerCx = player.x + player.w * 0.5;
   if (Math.abs(playerCx - wx) < radius) {
-    player.vy = -6;                                      // pop upward
-    player.vx += (playerCx < wx ? -2.5 : 2.5);         // push toward nearest edge
+    player.vy = -6;
+    player.vx += (playerCx < wx ? -2.5 : 2.5);
     player.onGround = false;
   }
 
@@ -815,13 +882,11 @@ function spawnCrater(wx) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 3 + Math.random() * 5 + tier;
     craterParticles.push({
-      x: wx,
-      y: baseGroundY(wx) - 4,
+      x: wx, y: baseGroundY(wx) - 4,
       vx: Math.cos(angle) * speed,
       vy: -4 - Math.random() * 5,
       size: 2 + Math.random() * 4,
-      life: 1,
-      decay: 0.012 + Math.random() * 0.015,
+      life: 1, decay: 0.012 + Math.random() * 0.015,
     });
   }
 }
@@ -847,16 +912,6 @@ function drawCraters() {
     if (rx < 2) continue;
 
     ctx.save();
-    // Dark pit oval
-    const grad = ctx.createRadialGradient(sx, sy + ry * 0.3, 0, sx, sy, rx);
-    grad.addColorStop(0,   'rgba(4,8,14,0.95)');
-    grad.addColorStop(0.6, 'rgba(12,20,30,0.80)');
-    grad.addColorStop(1,   'rgba(20,32,44,0)');
-    ctx.beginPath();
-    ctx.ellipse(sx, sy + ry * 0.2, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fillStyle = grad;
-    ctx.fill();
-
     // Rim highlight arc
     ctx.beginPath();
     ctx.ellipse(sx, sy - ry * 0.15, rx * 1.04, ry * 0.35, 0, Math.PI, Math.PI * 2);
@@ -2300,11 +2355,11 @@ function drawStickman() {
   ctx.fillStyle = C.text;
   ctx.beginPath();
   ctx.arc(0, HCY, 8,   0, Math.PI * 2, false);  // outer disc
-  ctx.arc(0, HCY, 3.5, 0, Math.PI * 2, true);   // hole punched CCW
+  ctx.arc(0, HCY, 5,   0, Math.PI * 2, true);   // hole punched CCW
   ctx.fill('evenodd');
   ctx.strokeStyle = C.text; ctx.lineWidth = 1.8;
   ctx.beginPath(); ctx.arc(0, HCY, 8,   0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(0, HCY, 3.5, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, HCY, 5,   0, Math.PI * 2); ctx.stroke();
 
   // Breath puff — small white wisp from mouth area, brighter when freezing
   const bT  = (frame % 52) / 52;
