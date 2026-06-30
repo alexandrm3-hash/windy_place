@@ -3455,15 +3455,17 @@ function drawResearchInterior() {
 
   // ── WORKSTATIONS ─────────────────────────────────────────
   // 8 desks total: front row (close) and back row
+  // dy is the floor surface — desks/chairs sit on top of it (floor surface is floorY)
+  const deskY = floorY - 2;
   const desks = [
-    {x:98, y:floorY, fac:-1, sd:1,  bob:0.0, var:0, row:'back'},
-    {x:172,y:floorY, fac: 1, sd:-1, bob:1.2, var:1, row:'back'},
-    {x:258,y:floorY, fac:-1, sd:1,  bob:2.4, var:2, row:'back'},
-    {x:340,y:floorY, fac: 1, sd:-1, bob:0.8, var:3, row:'back'},
-    {x:440,y:floorY, fac:-1, sd:1,  bob:1.6, var:0, row:'back'},
-    {x:530,y:floorY, fac: 1, sd:-1, bob:3.0, var:1, row:'back'},
-    {x:618,y:floorY, fac:-1, sd:1,  bob:0.4, var:2, row:'back'},
-    {x:710,y:floorY, fac: 1, sd:-1, bob:2.2, var:3, row:'back'},
+    {x:98, y:deskY, fac:-1, sd:1,  bob:0.0, var:0, row:'back'},
+    {x:172,y:deskY, fac: 1, sd:-1, bob:1.2, var:1, row:'back'},
+    {x:258,y:deskY, fac:-1, sd:1,  bob:2.4, var:2, row:'back'},
+    {x:340,y:deskY, fac: 1, sd:-1, bob:0.8, var:3, row:'back'},
+    {x:440,y:deskY, fac:-1, sd:1,  bob:1.6, var:0, row:'back'},
+    {x:530,y:deskY, fac: 1, sd:-1, bob:3.0, var:1, row:'back'},
+    {x:618,y:deskY, fac:-1, sd:1,  bob:0.4, var:2, row:'back'},
+    {x:710,y:deskY, fac: 1, sd:-1, bob:2.2, var:3, row:'back'},
   ];
 
   for (const dk of desks) {
@@ -4068,6 +4070,43 @@ function drawResearchInterior() {
     ctx.textAlign='left';
   }
 
+  // ── PLAYER STICKMAN inside research base ─────────────────
+  {
+    const hcx2 = player.inHouse.x + player.inHouse.w / 2;
+    // Map player world-x into interior screen space (center of room = IW/2)
+    const psx = IW / 2 + (player.x + player.w / 2 - hcx2);
+    const psy = floorY;
+    const pMoving = Math.abs(player.vx) > 0.3;
+    const pPhase  = pMoving ? (player.walkF / 6) * Math.PI * 2 : 0;
+    const pf = player.facing;
+    const sc2 = '#d8eeff';
+    ctx.save();
+    ctx.translate(psx, psy);
+    if (pf < 0) ctx.scale(-1, 1);
+    ctx.strokeStyle = sc2; ctx.fillStyle = sc2;
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // Legs
+    const lSwing = pMoving ? Math.sin(pPhase) * 0.45 : 0.04;
+    ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(Math.sin(lSwing)*8 - 3, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(Math.sin(lSwing + Math.PI)*8 + 3, 0); ctx.stroke();
+    // Body
+    ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(0, -4); ctx.stroke();
+    // Arms
+    const aSwing = pMoving ? Math.sin(pPhase + Math.PI) * 0.35 : -0.15;
+    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(Math.sin(aSwing)*9 - 7, -9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(Math.sin(aSwing + Math.PI)*9 + 7, -9); ctx.stroke();
+    // Torus head (donut, same as outdoor character)
+    ctx.fillStyle = sc2;
+    ctx.beginPath();
+    ctx.arc(0, -26, 8, 0, Math.PI*2, false);
+    ctx.arc(0, -26, 5, 0, Math.PI*2, true);
+    ctx.fill('evenodd');
+    ctx.strokeStyle = sc2; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(0, -26, 8, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -26, 5, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+
   // ── VOID STORM ALERT OVERLAY ──────────────────────────────
   if (isVoidNow) {
     const at=0.15+Math.sin(f*0.08)*0.10;
@@ -4084,7 +4123,11 @@ function drawResearchInterior() {
 
 // ── Draw: Stickman ────────────────────────────────────────
 function drawStickman() {
-  if (player.inHouse) { drawStickmanInWindow(); return; }
+  if (player.inHouse) {
+    // Research base draws the player itself inside drawResearchInterior
+    if (player.inHouse.type !== 'research') drawStickmanInWindow();
+    return;
+  }
   const sx  = (player.x - cam.x + player.w / 2) | 0;
   const sy  = (player.y - cam.y + player.h / 2) | 0;
   const air = !player.onGround;
