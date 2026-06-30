@@ -2798,11 +2798,12 @@ function drawResearchInterior_OLD_REPLACED() { // dead code
   ctx.textAlign = 'left';
 
   // ── Player stickman inside ───────────────────────────────
-  // Positioned near center-bottom, facing right
+  // Positioned near center-bottom, facing right — matches the outdoor character (torus head, no scarf)
   const psx = IW / 2 + 10;
   const psy = IH - 80;
   const walkCycle = Math.sin(frame * 0.08) * 0.3;
-  ctx.strokeStyle = '#d8eeff'; ctx.fillStyle = '#d8eeff';
+  const sc2 = '#d8eeff';
+  ctx.strokeStyle = sc2; ctx.fillStyle = sc2;
   ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   // Legs
   ctx.beginPath(); ctx.moveTo(psx, psy - 10); ctx.lineTo(psx - 5 + Math.sin(frame*0.08)*3, psy); ctx.stroke();
@@ -2812,14 +2813,16 @@ function drawResearchInterior_OLD_REPLACED() { // dead code
   // Arms (relaxed, looking at big screen)
   ctx.beginPath(); ctx.moveTo(psx, psy - 20); ctx.lineTo(psx - 8, psy - 14 + walkCycle*2); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(psx, psy - 20); ctx.lineTo(psx + 8, psy - 14 - walkCycle*2); ctx.stroke();
-  // Head
-  ctx.beginPath(); ctx.arc(psx, psy - 30, 7, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#0b0e14';
-  ctx.beginPath(); ctx.arc(psx + 2, psy - 31, 1.4, 0, Math.PI*2); ctx.fill(); // right eye
-  ctx.beginPath(); ctx.arc(psx - 2, psy - 31, 1.4, 0, Math.PI*2); ctx.fill(); // left eye (both open, awestruck)
-  // Mouth (open slightly — amazed)
-  ctx.strokeStyle = '#0b0e14'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.arc(psx, psy - 28, 2.5, 0.2, Math.PI - 0.2); ctx.stroke();
+  // Torus head — donut ring, same style as the outdoor character
+  const phcy = psy - 32;
+  ctx.fillStyle = sc2;
+  ctx.beginPath();
+  ctx.arc(psx, phcy, 8, 0, Math.PI*2, false);
+  ctx.arc(psx, phcy, 5, 0, Math.PI*2, true);
+  ctx.fill('evenodd');
+  ctx.strokeStyle = sc2; ctx.lineWidth = 1.8;
+  ctx.beginPath(); ctx.arc(psx, phcy, 8, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(psx, phcy, 5, 0, Math.PI*2); ctx.stroke();
 
   // ── Top-left corner HUD-like panel ──────────────────────
   ctx.fillStyle = 'rgba(10,20,40,0.85)';
@@ -2879,11 +2882,16 @@ function drawResearchInterior() {
     const armReach = screenDir * 20;
     ctx.beginPath(); ctx.moveTo(rx + hx, ry - 20 + bob); ctx.lineTo(rx + hx + armReach, ry - 16 + bob); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(rx + hx, ry - 20 + bob); ctx.lineTo(rx + hx + armReach - screenDir*4, ry - 12 + bob); ctx.stroke();
-    // head
-    ctx.beginPath(); ctx.arc(rx + hx, ry - 30 + bob, 6, 0, Math.PI*2); ctx.fill();
-    // eyes
-    ctx.fillStyle = '#0a0d14';
-    ctx.beginPath(); ctx.arc(rx + hx + screenDir*2.5, ry - 31 + bob, 1.1, 0, Math.PI*2); ctx.fill();
+    // torus head — donut ring, same style as the player character
+    const rhx = rx + hx, rhy = ry - 30 + bob;
+    ctx.fillStyle = sc;
+    ctx.beginPath();
+    ctx.arc(rhx, rhy, 6.5, 0, Math.PI*2, false);
+    ctx.arc(rhx, rhy, 4,   0, Math.PI*2, true);
+    ctx.fill('evenodd');
+    ctx.strokeStyle = sc; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(rhx, rhy, 6.5, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(rhx, rhy, 4,   0, Math.PI*2); ctx.stroke();
     ctx.fillStyle = sc;
     // accessories per variant
     if (type === 0) {
