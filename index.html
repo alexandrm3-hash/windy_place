@@ -309,23 +309,25 @@ function extendMap() {
     if (chunkW > 120 && Math.random() < 0.50) {
       const hx    = chunkX + 18 + Math.random() * Math.max(0, chunkW - 120);
       const tier  = getWindTier();
-      const bunkerChance = tier >= 6 ? 0.30 : 0.01;
-      const metalChance  = Math.min(1, 0.10 + tier * 0.20);
+      const researchChance = tier === 7 ? 0.40 : 0.005;
+      const bunkerChance   = tier >= 6 ? 0.30 : 0.01;
+      const metalChance    = Math.min(1, 0.10 + tier * 0.20);
       const r = Math.random();
-      const type = r < bunkerChance ? 'bunker' : r < bunkerChance + metalChance ? 'metal' : 'normal';
-      const isBunker = type === 'bunker';
-      const count = 1; // fortresses always spawn alone
-      for (let ci = 0; ci < count; ci++) {
-        const bx = hx + ci * (600 + Math.random() * 400); // wide gap if ever multiple
-        const hw2 = isBunker ? 90 : 55;
-        const hGroundY = baseGroundY(bx + hw2); // ground exactly under this house
-        const hYOffset = isBunker ? 175 : 120;  // body-bottom offset from h.y
-        houses.push({ x:bx, y:hGroundY - hYOffset, w:isBunker?180:110,
-                      type,
-                      flying:false, flyTimer: 40 + Math.floor(Math.random() * 160),
-                      flyDelay: 40 + Math.floor(Math.random() * 160),
-                      vy:0, vx:0, angle:0, alpha:1 });
-      }
+      const type = r < researchChance ? 'research'
+                 : r < researchChance + bunkerChance ? 'bunker'
+                 : r < researchChance + bunkerChance + metalChance ? 'metal'
+                 : 'normal';
+      const isBunker   = type === 'bunker';
+      const isResearch = type === 'research';
+      const hw2      = isResearch ? 160 : isBunker ? 90 : 55;
+      const hYOffset = isResearch ? 240 : isBunker ? 175 : 120;
+      const bx = hx;
+      const hGroundY = baseGroundY(bx + hw2);
+      houses.push({ x:bx, y:hGroundY - hYOffset, w:isResearch?320:isBunker?180:110,
+                    type,
+                    flying:false, flyTimer: 40 + Math.floor(Math.random() * 160),
+                    flyDelay: 40 + Math.floor(Math.random() * 160),
+                    vy:0, vx:0, angle:0, alpha:1 });
     }
 
     // Maybe place a decoration (snowman or pine tree)
@@ -419,7 +421,7 @@ function updatePlayer() {
     } else {
       player.vx = 0; player.vy = 0;
       player.x = player.inHouse.x + player.inHouse.w / 2 - player.w / 2;
-      const hFloor = player.inHouse.type === 'bunker' ? player.inHouse.y + 175 : player.inHouse.y + 120;
+      const hFloor = player.inHouse.type === 'research' ? player.inHouse.y + 240 : player.inHouse.type === 'bunker' ? player.inHouse.y + 175 : player.inHouse.y + 120;
       player.y = hFloor - player.h;
       player.onGround = true;
       cam.x += (player.x - W * 0.35 - cam.x) * 0.11;
@@ -570,9 +572,9 @@ function updatePlayer() {
 function nearHouse(h) {
   if (h.flying || h.alpha < 0.5) return false;
   const hCx = h.x + h.w / 2, pCx = player.x + player.w / 2;
-  const hH = h.type === 'bunker' ? 180 : 120;
+  const hH = h.type === 'research' ? 240 : h.type === 'bunker' ? 180 : 120;
   const hBottom = h.y + hH, pBottom = player.y + player.h;
-  const reach = h.type === 'bunker' ? 100 : 68;
+  const reach = h.type === 'research' ? 160 : h.type === 'bunker' ? 100 : 68;
   return Math.abs(pCx - hCx) < reach && pBottom < hBottom + 38 && pBottom > hBottom - 70;
 }
 
@@ -583,7 +585,7 @@ function handleEnterExit() {
     for (const h of houses) {
       if (nearHouse(h)) {
         player.inHouse = h;
-        if (h.type === 'bunker') challenge = null; // cancel any active challenge
+        if (h.type === 'bunker' || h.type === 'research') challenge = null;
         break;
       }
     }
@@ -633,19 +635,19 @@ function updateHouses() {
       h.y  += h.vy;
       h.angle += h.vx * 0.015;
       if (h.y - cam.y < -80) h.alpha -= 0.025;
-    } else if (isVoidStorm ||
+    } else if (h.type !== 'research' && (isVoidStorm ||
                (isHypercane && h.type === 'metal') ||
-               (isStorm && h.type !== 'metal' && h.type !== 'bunker')) {
+               (isStorm && h.type !== 'metal' && h.type !== 'bunker'))) {
       h.flyTimer--;
       if (h.flyTimer <= 0) {
         h.flying = true;
         if (player.inHouse === h) player.inHouse = null;
       }
-    } else if (!isStorm || (h.type !== 'normal' && !isHypercane) || (h.type === 'bunker' && !isVoidStorm)) {
+    } else if (h.type === 'research' || !isStorm || (h.type !== 'normal' && !isHypercane) || (h.type === 'bunker' && !isVoidStorm)) {
       h.flyTimer = h.flyDelay;
       // Snap to current terrain (including crater dips) so houses fall into craters
-      const hw2 = h.type === 'bunker' ? 90 : 55;
-      const hYOffset = h.type === 'bunker' ? 175 : 120;
+      const hw2 = h.type === 'research' ? 160 : h.type === 'bunker' ? 90 : 55;
+      const hYOffset = h.type === 'research' ? 240 : h.type === 'bunker' ? 175 : 120;
       const hcx = h.x + hw2;
       let hGroundY = baseGroundY(hcx);
       for (const cr of craters) {
@@ -744,7 +746,7 @@ function updateTornado() {
 
   // Proximity kill — void storm kills through everything, no shelter
   const killRadius = 58 * tScale;
-  const sheltered  = !isVoidStorm && player.inHouse && (player.inHouse.type === 'bunker' || !isHypercane);
+  const sheltered  = player.inHouse && (player.inHouse.type === 'research' || (!isVoidStorm && (player.inHouse.type === 'bunker' || !isHypercane)));
   if (tornado.alpha > 0.75 && !sheltered) {
     const dist = Math.abs((player.x + player.w / 2) - tornado.x);
     const dangerRadius = killRadius * 2.8;
@@ -1137,33 +1139,100 @@ function drawSky() {
 }
 
 function drawAurora() {
-  const auroraAlpha = Math.max(0.55, 1 - wind.strength * 0.5);
+  const auroraAlpha = Math.max(0.55, 1 - wind.strength * 0.4);
   ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  // Many more bands, finer x sampling, multi-layer shimmer per band
   const bands = [
-    { baseY: H * 0.12, freq: 0.006, speed: 0.008, color: [0, 255, 140],  width: 110 },
-    { baseY: H * 0.22, freq: 0.009, speed: 0.006, color: [0, 200, 255],  width: 85  },
-    { baseY: H * 0.32, freq: 0.005, speed: 0.010, color: [180, 80, 255], width: 65  },
+    { baseY: H*0.06, freq:0.0040, freq2:0.0091, speed:0.0055, speed2:0.0031, color:[0,255,120],   width:130, amp:55, amp2:28 },
+    { baseY: H*0.13, freq:0.0070, freq2:0.0150, speed:0.0080, speed2:0.0045, color:[0,230,255],   width:100, amp:48, amp2:22 },
+    { baseY: H*0.20, freq:0.0055, freq2:0.0120, speed:0.0065, speed2:0.0038, color:[60,255,180],  width: 80, amp:40, amp2:18 },
+    { baseY: H*0.28, freq:0.0090, freq2:0.0180, speed:0.0050, speed2:0.0070, color:[150,60,255],  width: 90, amp:50, amp2:25 },
+    { baseY: H*0.36, freq:0.0045, freq2:0.0095, speed:0.0095, speed2:0.0030, color:[255,40,180],  width: 70, amp:38, amp2:16 },
+    { baseY: H*0.42, freq:0.0075, freq2:0.0160, speed:0.0040, speed2:0.0055, color:[0,180,255],   width: 60, amp:32, amp2:14 },
+    { baseY: H*0.10, freq:0.0030, freq2:0.0070, speed:0.0035, speed2:0.0018, color:[80,255,200],  width:150, amp:60, amp2:30 },
+    { baseY: H*0.25, freq:0.0110, freq2:0.0220, speed:0.0110, speed2:0.0060, color:[200,100,255], width: 55, amp:35, amp2:12 },
   ];
+
+  const STEP = 4; // finer x step for smoother curtains
+
   for (const band of bands) {
-    const pulse = 0.65 + 0.35 * Math.sin(frame * 0.016 + band.baseY * 0.03);
+    const pulse   = 0.55 + 0.45 * Math.sin(frame * 0.013 + band.baseY * 0.04);
+    const pulse2  = 0.60 + 0.40 * Math.sin(frame * 0.021 + band.baseY * 0.02 + 1.4);
     const [r, g, b] = band.color;
-    for (let x = 0; x < W; x += 16) {
-      const cy1 = band.baseY + Math.sin(x        * band.freq + frame * band.speed) * 45 + Math.sin(x        * band.freq * 2.1 + frame * band.speed * 0.6) * 20;
-      const cy2 = band.baseY + Math.sin((x + 16) * band.freq + frame * band.speed) * 45 + Math.sin((x + 16) * band.freq * 2.1 + frame * band.speed * 0.6) * 20;
-      const hw = band.width / 2;
-      const sg = ctx.createLinearGradient(0, cy1 - hw, 0, cy1 + hw);
-      const peak = (auroraAlpha * pulse * 0.72).toFixed(3);
+
+    // Build curtain top/bottom edge path using 3 layered sine waves
+    const wave = (x, offset) =>
+      band.baseY
+      + Math.sin(x * band.freq  + frame * band.speed  + offset) * band.amp
+      + Math.sin(x * band.freq2 + frame * band.speed2 + offset + 0.7) * band.amp2
+      + Math.sin(x * band.freq  * 0.47 + frame * band.speed * 1.3 + offset + 2.1) * band.amp * 0.3;
+
+    // Primary soft curtain
+    for (let x = -STEP; x < W + STEP; x += STEP) {
+      const cy1 = wave(x,        0);
+      const cy2 = wave(x + STEP, 0);
+      const hw  = (band.width / 2) * pulse;
+      const sg  = ctx.createLinearGradient(0, cy1 - hw, 0, cy1 + hw);
+      const pk  = (auroraAlpha * pulse * 0.55).toFixed(3);
       sg.addColorStop(0,    `rgba(${r},${g},${b},0)`);
-      sg.addColorStop(0.35, `rgba(${r},${g},${b},${peak})`);
-      sg.addColorStop(0.65, `rgba(${r},${g},${b},${peak})`);
+      sg.addColorStop(0.20, `rgba(${r},${g},${b},${pk})`);
+      sg.addColorStop(0.50, `rgba(${r},${g},${b},${(auroraAlpha * pulse * 0.75).toFixed(3)})`);
+      sg.addColorStop(0.80, `rgba(${r},${g},${b},${pk})`);
       sg.addColorStop(1,    `rgba(${r},${g},${b},0)`);
       ctx.fillStyle = sg;
       ctx.beginPath();
-      ctx.moveTo(x,      cy1 - hw); ctx.lineTo(x + 16, cy2 - hw);
-      ctx.lineTo(x + 16, cy2 + hw); ctx.lineTo(x,      cy1 + hw);
+      ctx.moveTo(x,        cy1 - hw); ctx.lineTo(x + STEP, cy2 - hw);
+      ctx.lineTo(x + STEP, cy2 + hw); ctx.lineTo(x,        cy1 + hw);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // Bright inner core streak — thin, high-alpha centre line
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let x = -STEP; x <= W + STEP; x += STEP) {
+      const cy = wave(x, 0.4);
+      x === -STEP ? ctx.moveTo(x, cy) : ctx.lineTo(x, cy);
+    }
+    ctx.strokeStyle = `rgba(${r},${g},${b},${(auroraAlpha * pulse2 * 0.55).toFixed(3)})`;
+    ctx.stroke();
+
+    // Shimmer layer — offset phase creates rippling sub-curtain
+    for (let x = -STEP; x < W + STEP; x += STEP) {
+      const cy1 = wave(x,        1.9);
+      const cy2 = wave(x + STEP, 1.9);
+      const hw2 = (band.width * 0.30) * pulse2;
+      const sg2 = ctx.createLinearGradient(0, cy1 - hw2, 0, cy1 + hw2);
+      const pk2 = (auroraAlpha * pulse2 * 0.30).toFixed(3);
+      sg2.addColorStop(0,    `rgba(${r},${g},${b},0)`);
+      sg2.addColorStop(0.45, `rgba(${r},${g},${b},${pk2})`);
+      sg2.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = sg2;
+      ctx.beginPath();
+      ctx.moveTo(x,        cy1 - hw2); ctx.lineTo(x + STEP, cy2 - hw2);
+      ctx.lineTo(x + STEP, cy2 + hw2); ctx.lineTo(x,        cy1 + hw2);
       ctx.closePath(); ctx.fill();
     }
   }
+
+  // Vertical streaks — fine luminous rays hanging down from band peaks
+  ctx.lineWidth = 0.8;
+  const rayColors = [[0,255,140],[0,210,255],[160,70,255],[255,50,170]];
+  for (let i = 0; i < 38; i++) {
+    const hs = (n) => Math.abs(Math.sin(i * 3.7 + n * 1.618));
+    const rx = hs(1) * W;
+    const ry = H * (0.06 + hs(2) * 0.38);
+    const rlen = 30 + hs(3) * 90;
+    const [rr,rg,rb] = rayColors[i % rayColors.length];
+    const pulse3 = 0.4 + 0.6 * Math.sin(frame * 0.018 + i * 0.9);
+    const rayG = ctx.createLinearGradient(0, ry, 0, ry + rlen);
+    rayG.addColorStop(0,   `rgba(${rr},${rg},${rb},${(auroraAlpha * pulse3 * 0.55).toFixed(3)})`);
+    rayG.addColorStop(1,   `rgba(${rr},${rg},${rb},0)`);
+    ctx.strokeStyle = rayG;
+    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + hs(4)*6 - 3, ry + rlen); ctx.stroke();
+  }
+
   ctx.restore();
 }
 
@@ -1905,71 +1974,177 @@ function drawTerrain() {
 }
 
 function drawSnowman(x, y, angle) {
-  const lean = angle !== undefined ? angle : Math.max(-0.28, Math.min(0.28, wind.force * 0.14));
+  const lean = angle !== undefined ? angle : Math.max(-0.32, Math.min(0.32, wind.force * 0.15));
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(lean);
-  ctx.scale(1.7, 1.7);
+  ctx.scale(1.9, 1.9);
 
-  // Bottom ball
-  ctx.fillStyle = '#e8f4fc'; ctx.strokeStyle = 'rgba(140,190,220,0.5)'; ctx.lineWidth = 0.6;
-  ctx.beginPath(); ctx.arc(0, -7, 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-  // Middle ball
-  ctx.beginPath(); ctx.arc(0, -18, 5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-  // Head
-  ctx.beginPath(); ctx.arc(0, -27, 3.8, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  // Shadow on ground
+  ctx.save();
+  ctx.scale(1, 0.22);
+  const shg = ctx.createRadialGradient(0, 0, 1, 0, 0, 9);
+  shg.addColorStop(0, 'rgba(0,0,0,0.28)'); shg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = shg;
+  ctx.beginPath(); ctx.ellipse(0, 0, 9, 9, 0, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
 
-  // Eyes
-  ctx.fillStyle = '#152030';
-  ctx.beginPath(); ctx.arc(-1.3, -28.2, 0.65, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(1.3,  -28.2, 0.65, 0, Math.PI*2); ctx.fill();
-
-  // Carrot nose
-  ctx.fillStyle = '#e06818';
-  ctx.beginPath(); ctx.moveTo(3.5, -27.3); ctx.lineTo(0, -27.8); ctx.lineTo(0, -26.8); ctx.closePath(); ctx.fill();
-
-  // Mouth (small dots)
-  ctx.fillStyle = '#152030';
-  for (let m = -1; m <= 1; m++) {
-    ctx.beginPath(); ctx.arc(m * 1.1, -25.8 + Math.abs(m) * 0.4, 0.45, 0, Math.PI*2); ctx.fill();
+  // ── Bottom ball ──────────────────────────────────────────
+  const bgrad = ctx.createRadialGradient(-2, -10, 1, 0, -7, 8);
+  bgrad.addColorStop(0, '#f4faff'); bgrad.addColorStop(0.6, '#ddeef8'); bgrad.addColorStop(1, '#b8d8ee');
+  ctx.fillStyle = bgrad;
+  ctx.beginPath(); ctx.arc(0, -7, 8, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(100,160,200,0.35)'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.arc(0, -7, 8, 0, Math.PI*2); ctx.stroke();
+  // Bottom ball surface dimples
+  ctx.strokeStyle = 'rgba(140,190,220,0.25)'; ctx.lineWidth = 0.4;
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.26, r = 3 + i * 0.9;
+    ctx.beginPath(); ctx.arc(Math.cos(a)*r*0.5, -7 + Math.sin(a)*r*0.4, 1.1+i*0.2, 0, Math.PI*2); ctx.stroke();
   }
 
-  // Buttons on middle ball
+  // ── Middle ball ──────────────────────────────────────────
+  const mgrad = ctx.createRadialGradient(-1.5, -20, 0.5, 0, -18, 6);
+  mgrad.addColorStop(0, '#f4faff'); mgrad.addColorStop(0.6, '#ddeef8'); mgrad.addColorStop(1, '#b8d8ee');
+  ctx.fillStyle = mgrad;
+  ctx.beginPath(); ctx.arc(0, -18, 5.8, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(100,160,200,0.35)'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.arc(0, -18, 5.8, 0, Math.PI*2); ctx.stroke();
+
+  // Buttons — shiny black with highlight
   for (let b = 0; b < 3; b++) {
-    ctx.beginPath(); ctx.arc(0, -20.5 + b * 2.5, 0.55, 0, Math.PI*2); ctx.fill();
+    const by = -21.5 + b * 2.8;
+    ctx.fillStyle = '#0e1c28';
+    ctx.beginPath(); ctx.arc(0, by, 0.75, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.arc(-0.25, by - 0.25, 0.28, 0, Math.PI*2); ctx.fill();
   }
 
-  // Stick arms
-  ctx.strokeStyle = '#5a3a18'; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-5, -19); ctx.lineTo(-12, -14); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-12, -14); ctx.lineTo(-14, -11.5); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-12, -14); ctx.lineTo(-14, -15.5); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(5, -19); ctx.lineTo(12, -14); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(12, -14); ctx.lineTo(14, -11.5); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(12, -14); ctx.lineTo(14, -15.5); ctx.stroke();
+  // ── Head ─────────────────────────────────────────────────
+  const hgrad = ctx.createRadialGradient(-1.2, -29, 0.5, 0, -27.5, 5);
+  hgrad.addColorStop(0, '#f8fbff'); hgrad.addColorStop(0.7, '#ddeef8'); hgrad.addColorStop(1, '#b0d0e8');
+  ctx.fillStyle = hgrad;
+  ctx.beginPath(); ctx.arc(0, -27.5, 4.4, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(100,160,200,0.35)'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.arc(0, -27.5, 4.4, 0, Math.PI*2); ctx.stroke();
 
-  // Hat
-  ctx.fillStyle = '#152030';
-  ctx.fillRect(-4.5, -35, 9, 8);    // hat body
-  ctx.fillRect(-6.5, -27.5, 13, 2); // brim
+  // Eyes — detailed with pupil + shine
+  for (const ex of [-1.6, 1.6]) {
+    ctx.fillStyle = '#0a1520';
+    ctx.beginPath(); ctx.arc(ex, -28.8, 0.85, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#1a3a55';
+    ctx.beginPath(); ctx.arc(ex, -28.8, 0.55, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.arc(ex - 0.3, -29.1, 0.28, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Eyebrows
+  ctx.strokeStyle = '#0e1c28'; ctx.lineWidth = 0.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-2.4, -30.2); ctx.quadraticCurveTo(-1.6, -30.7, -0.8, -30.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0.8,  -30.2); ctx.quadraticCurveTo( 1.6, -30.7,  2.4, -30.2); ctx.stroke();
+
+  // Carrot nose — tapered with ridge detail
+  ctx.fillStyle = '#e06010';
+  ctx.beginPath();
+  ctx.moveTo(0, -28.1); ctx.lineTo(0, -27.0);
+  ctx.lineTo(4.2, -27.55); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#b04408'; ctx.lineWidth = 0.3;
+  ctx.beginPath(); ctx.moveTo(1.2, -27.9); ctx.lineTo(3.5, -27.6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(2.2, -27.65); ctx.lineTo(4.0, -27.55); ctx.stroke();
+
+  // Mouth — curved smile with 5 dots
+  for (let m = -2; m <= 2; m++) {
+    const mx = m * 1.0, my = -25.5 + (m*m) * 0.22;
+    ctx.fillStyle = '#0e1c28';
+    ctx.beginPath(); ctx.arc(mx, my, 0.42, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Cheeks — rosy blush
+  for (const cx2 of [-2.8, 2.8]) {
+    const cg = ctx.createRadialGradient(cx2, -27, 0, cx2, -27, 1.6);
+    cg.addColorStop(0, 'rgba(255,140,140,0.35)'); cg.addColorStop(1, 'rgba(255,140,140,0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(cx2, -27, 1.6, 0, Math.PI*2); ctx.fill();
+  }
+
+  // ── Hat ──────────────────────────────────────────────────
+  // Brim
+  ctx.fillStyle = '#0e1c28';
+  ctx.beginPath(); ctx.ellipse(0, -31.4, 6.5, 1.4, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#1a2e40'; ctx.lineWidth = 0.4;
+  ctx.beginPath(); ctx.ellipse(0, -31.4, 6.5, 1.4, 0, 0, Math.PI*2); ctx.stroke();
+  // Crown
+  ctx.fillStyle = '#0e1c28';
+  ctx.fillRect(-4.2, -40, 8.4, 8.8);
+  ctx.strokeStyle = '#1a2e40'; ctx.lineWidth = 0.3;
+  ctx.strokeRect(-4.2, -40, 8.4, 8.8);
   // Hat band
-  ctx.fillStyle = '#8b1a1a';
-  ctx.fillRect(-4.5, -29.5, 9, 1.5);
+  const hbg = ctx.createLinearGradient(-4.2, 0, 4.2, 0);
+  hbg.addColorStop(0, '#8b1a1a'); hbg.addColorStop(0.5, '#cc2828'); hbg.addColorStop(1, '#8b1a1a');
+  ctx.fillStyle = hbg;
+  ctx.fillRect(-4.2, -33.0, 8.4, 1.8);
+  // Hat buckle
+  ctx.fillStyle = '#d4a820';
+  ctx.fillRect(-1.1, -33.2, 2.2, 2.0);
+  ctx.fillStyle = '#0e1c28';
+  ctx.fillRect(-0.5, -32.9, 1.0, 1.4);
+  // Hat top highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(-4.2, -40, 8.4, 2.5);
+  // Snow on hat brim
+  ctx.fillStyle = 'rgba(230,246,255,0.88)';
+  ctx.beginPath(); ctx.ellipse(0, -31.0, 5.2, 0.8, 0, 0, Math.PI*2); ctx.fill();
 
-  // Scarf
-  ctx.strokeStyle = '#cc3030'; ctx.lineWidth = 2; ctx.lineCap = 'butt';
-  ctx.beginPath(); ctx.arc(0, -23, 5.2, -0.7, Math.PI + 0.7); ctx.stroke();
-  ctx.strokeStyle = '#ee5050'; ctx.lineWidth = 0.7;
-  ctx.beginPath(); ctx.arc(0, -23, 5.2, -0.7, Math.PI + 0.7); ctx.stroke();
-  // Scarf tail
-  ctx.fillStyle = '#cc3030';
-  ctx.fillRect(4, -23.8, 1.8, 5);
+  // ── Stick arms — detailed branches ───────────────────────
+  ctx.strokeStyle = '#4a2e10'; ctx.lineCap = 'round';
+  const drawBranch = (x1,y1,x2,y2,w) => {
+    ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  };
+  // Left arm
+  drawBranch(-5.8,-19,-13,-13.5,1.4);
+  drawBranch(-13,-13.5,-15.5,-11,0.8);
+  drawBranch(-13,-13.5,-15,-15.5,0.8);
+  drawBranch(-13,-13.5,-14,-10,0.6);
+  drawBranch(-10,-15,-12,-12.5,0.7);
+  // Right arm
+  drawBranch(5.8,-19,13,-13.5,1.4);
+  drawBranch(13,-13.5,15.5,-11,0.8);
+  drawBranch(13,-13.5,15,-15.5,0.8);
+  drawBranch(13,-13.5,14,-10,0.6);
+  drawBranch(10,-15,12,-12.5,0.7);
+
+  // ── Scarf ─────────────────────────────────────────────────
+  // Main wrap
+  ctx.strokeStyle = '#cc2828'; ctx.lineWidth = 2.6; ctx.lineCap = 'butt';
+  ctx.beginPath(); ctx.arc(0, -22.5, 5.6, -0.6, Math.PI + 0.6); ctx.stroke();
+  // Stripe
+  ctx.strokeStyle = '#ff6060'; ctx.lineWidth = 0.7;
+  ctx.beginPath(); ctx.arc(0, -22.5, 5.6, -0.6, Math.PI + 0.6); ctx.stroke();
+  // Second wrap loop
+  ctx.strokeStyle = '#aa2020'; ctx.lineWidth = 2.0; ctx.lineCap = 'butt';
+  ctx.beginPath(); ctx.arc(0, -21.0, 5.4, -0.4, Math.PI * 0.55); ctx.stroke();
+  // Tail hanging
+  ctx.fillStyle = '#cc2828';
+  ctx.beginPath();
+  ctx.moveTo(4.5, -22.8); ctx.lineTo(5.5, -22.8);
+  ctx.lineTo(5.8, -17.0); ctx.lineTo(4.2, -17.0); ctx.closePath(); ctx.fill();
+  // Fringe on tail
+  ctx.strokeStyle = '#cc2828'; ctx.lineWidth = 0.5; ctx.lineCap = 'round';
+  for (let f = 0; f < 4; f++) {
+    const fx = 4.2 + f * 0.45;
+    ctx.beginPath(); ctx.moveTo(fx, -17.0); ctx.lineTo(fx - 0.2, -15.8); ctx.stroke();
+  }
+
+  // ── Snow patches on body ──────────────────────────────────
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath(); ctx.ellipse(-2, -3.5, 3.5, 1.2, -0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-1.5,-15.8, 2.5, 0.9, -0.2, 0, Math.PI*2); ctx.fill();
 
   ctx.restore();
 }
 
 function drawPineTree(x, y, angle) {
-  // Swing: base lean + oscillation scaled by wind strength
   const swing = angle !== undefined ? angle
     : wind.force * 0.09 + Math.sin(frame * (0.03 + wind.strength * 0.05)) * wind.strength * 0.18;
   const lean = Math.max(-0.55, Math.min(0.55, swing));
@@ -1994,7 +2169,6 @@ function drawPineTree(x, y, angle) {
   ];
   for (const l of layers) {
     ctx.save();
-    // Pivot at bottom of each layer, swing more toward top
     ctx.translate(0, l.y);
     ctx.rotate(lean * l.swingFrac);
     ctx.translate(0, -l.y);
@@ -2385,17 +2559,17 @@ function drawStickman() {
 
 // ── Draw: Houses ─────────────────────────────────────────
 function drawHouse(h) {
-  const isBunker = h.type === 'bunker';
+  const isBunker   = h.type === 'bunker';
+  const isResearch = h.type === 'research';
   const cx = h.x - cam.x + h.w / 2;
-  const cy = h.y - cam.y + (isBunker ? 120 : 84);
-  if (cx < -200 || cx > W + 200 || cy < -200 || cy > H + 200) return;
+  const cy = h.y - cam.y + (isResearch ? 160 : isBunker ? 120 : 84);
+  if (cx < -300 || cx > W + 300 || cy < -300 || cy > H + 300) return;
 
   const RH = isBunker ? 28 : 48;
   const BH = isBunker ? 110 : 72;
   const hw = h.w / 2;
 
   const isStorm = wind.force < -0.68;
-  // Bunkers and metal bunkers never shake
   const shaking = isStorm && !h.flying && h.flyTimer < 60 && h.type === 'normal';
   const shakeX  = shaking ? Math.sin(frame * 0.8) * 4 : 0;
 
@@ -2406,6 +2580,223 @@ function drawHouse(h) {
 
   const warm    = player.inHouse === h;
   const isMetal = h.type === 'metal';
+
+  if (isResearch) {
+    // ══════════════════════════════════════════════════
+    // ── GIANT RESEARCH BASE ───────────────────────────
+    // ══════════════════════════════════════════════════
+    // Overall size: 320px wide, ~240px tall
+    // Origin: (cx, cy) = center-x, ~160 below top
+
+    const rhw = 160;   // half-width
+    const rbt = 80;    // body bottom Y (below origin)
+    const rht = -160;  // body top Y (above origin)
+
+    // Warm occupied glow
+    if (warm) {
+      const grd = ctx.createRadialGradient(0, -60, 0, 0, -60, rhw * 2.5);
+      grd.addColorStop(0, 'rgba(80,200,255,0.22)');
+      grd.addColorStop(0.5,'rgba(50,160,220,0.10)');
+      grd.addColorStop(1, 'rgba(20,80,160,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(-rhw*2.5, rht - 40, rhw*5, 360);
+    }
+
+    // Foundation slab
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(-rhw - 18, rbt, rhw*2 + 36, 18);
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(-rhw - 18, rbt, rhw*2 + 36, 5);
+    // Foundation bolts
+    ctx.fillStyle = '#555';
+    for (let bi = 0; bi < 10; bi++) {
+      const bx = -rhw + 16 + bi * (rhw*2 - 20) / 9;
+      ctx.beginPath(); ctx.arc(bx, rbt + 10, 3, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Main structure body (reinforced concrete panels)
+    ctx.fillStyle = '#2c2e32';
+    ctx.fillRect(-rhw, rht, rhw*2, rbt - rht);
+    // Panel lines (vertical segments)
+    ctx.strokeStyle = '#1a1c20'; ctx.lineWidth = 2;
+    for (let pi = 1; pi < 6; pi++) {
+      const px = -rhw + pi * (rhw*2/6);
+      ctx.beginPath(); ctx.moveTo(px, rht + 5); ctx.lineTo(px, rbt - 5); ctx.stroke();
+    }
+    // Horizontal reinforcement bands
+    ctx.strokeStyle = '#383c42'; ctx.lineWidth = 3;
+    for (const bandy of [rht+30, rht+70, rht+110, rbt-30]) {
+      ctx.beginPath(); ctx.moveTo(-rhw, bandy); ctx.lineTo(rhw, bandy); ctx.stroke();
+    }
+
+    // Left wing / module
+    ctx.fillStyle = '#252729';
+    ctx.fillRect(-rhw - 38, rht + 40, 38, rbt - rht - 40);
+    ctx.strokeStyle = '#1a1c20'; ctx.lineWidth = 2;
+    ctx.strokeRect(-rhw - 38, rht + 40, 38, rbt - rht - 40);
+
+    // Right wing / module
+    ctx.fillStyle = '#252729';
+    ctx.fillRect(rhw, rht + 40, 38, rbt - rht - 40);
+    ctx.strokeStyle = '#1a1c20'; ctx.lineWidth = 2;
+    ctx.strokeRect(rhw, rht + 40, 38, rbt - rht - 40);
+
+    // Central tower
+    ctx.fillStyle = '#1e2024';
+    ctx.fillRect(-34, rht - 42, 68, 42);
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+    ctx.strokeRect(-34, rht - 42, 68, 42);
+    // Tower window
+    ctx.fillStyle = warm ? '#7fd4ff' : '#1a3a55';
+    ctx.fillRect(-20, rht - 34, 40, 22);
+    if (warm) {
+      ctx.fillStyle = 'rgba(100,220,255,0.35)';
+      ctx.fillRect(-20, rht - 34, 40, 22);
+    }
+    ctx.strokeStyle = '#44aacc'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(-20, rht - 34, 40, 22);
+
+    // Radar dish on top of tower
+    ctx.save();
+    ctx.translate(0, rht - 42);
+    const dishTilt = Math.sin(frame * 0.018) * 0.35;
+    ctx.rotate(dishTilt);
+    // Dish mast
+    ctx.strokeStyle = '#888'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -28); ctx.stroke();
+    // Dish bowl
+    ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, -28, 20, Math.PI*0.85, Math.PI*0.15, true); ctx.stroke();
+    // Dish support arm
+    ctx.strokeStyle = '#888'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(18, -20); ctx.stroke();
+    // Signal pulse ring
+    if (frame % 80 < 40) {
+      const pulseR = ((frame % 80) / 40) * 36;
+      ctx.globalAlpha = h.alpha * (1 - (frame % 80) / 40) * 0.5;
+      ctx.strokeStyle = '#44eeff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, -28, pulseR, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = h.alpha;
+    }
+    ctx.restore();
+
+    // Comms antenna array (right tower area)
+    ctx.strokeStyle = '#888'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(rhw - 20, rht); ctx.lineTo(rhw - 20, rht - 55); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(rhw - 8, rht); ctx.lineTo(rhw - 8, rht - 40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(rhw + 20, rht + 40); ctx.lineTo(rhw + 20, rht - 30); ctx.stroke();
+    // Crossbars
+    ctx.lineWidth = 1;
+    for (const ay of [rht - 50, rht - 42, rht - 32]) {
+      ctx.beginPath(); ctx.moveTo(rhw - 28, ay); ctx.lineTo(rhw - 4, ay); ctx.stroke();
+    }
+
+    // Solar panels on left wing roof
+    const spY = rht + 38;
+    ctx.fillStyle = '#223355'; ctx.strokeStyle = '#3366aa'; ctx.lineWidth = 1;
+    ctx.fillRect(-rhw - 36, spY - 14, 34, 14); ctx.strokeRect(-rhw - 36, spY - 14, 34, 14);
+    // Grid lines on panels
+    ctx.strokeStyle = '#2255aa'; ctx.lineWidth = 0.8;
+    for (let si = 1; si < 5; si++) {
+      ctx.beginPath(); ctx.moveTo(-rhw - 36 + si*7, spY - 14); ctx.lineTo(-rhw - 36 + si*7, spY); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(-rhw - 36, spY - 7); ctx.lineTo(-rhw - 2, spY - 7); ctx.stroke();
+    // Reflection shimmer
+    ctx.fillStyle = `rgba(100,180,255,${0.08 + Math.sin(frame*0.04)*0.04})`;
+    ctx.fillRect(-rhw - 36, spY - 14, 34, 14);
+
+    // Windows on main body (two rows)
+    const winRows = [rht + 20, rht + 60, rht + 100];
+    for (const wy of winRows) {
+      for (let wi = 0; wi < 5; wi++) {
+        const wx2 = -rhw + 22 + wi * (rhw*2 - 36)/4;
+        const litColor = warm ? '#c8f0ff' : (Math.sin(wx2 * 0.3 + wy * 0.7 + frame * 0.03) > 0.2 ? '#1a3c55' : '#0a1a28');
+        ctx.fillStyle = litColor;
+        ctx.fillRect(wx2 - 10, wy, 20, 14);
+        ctx.strokeStyle = '#3a5a6a'; ctx.lineWidth = 1;
+        ctx.strokeRect(wx2 - 10, wy, 20, 14);
+        // Warm interior glow
+        if (warm) {
+          ctx.fillStyle = 'rgba(150,230,255,0.20)';
+          ctx.fillRect(wx2 - 10, wy, 20, 14);
+        }
+      }
+    }
+
+    // Blast door (entrance)
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(-26, rbt - 56, 52, 56);
+    ctx.strokeStyle = '#445'; ctx.lineWidth = 2;
+    ctx.strokeRect(-26, rbt - 56, 52, 56);
+    // Door reinforcement lines
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, rbt - 56); ctx.lineTo(0, rbt); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-26, rbt - 28); ctx.lineTo(26, rbt - 28); ctx.stroke();
+    // Door bolts
+    ctx.fillStyle = '#556';
+    for (const bpos of [[-22, rbt-52],[22,rbt-52],[-22,rbt-8],[22,rbt-8]]) {
+      ctx.beginPath(); ctx.arc(bpos[0], bpos[1], 3.5, 0, Math.PI*2); ctx.fill();
+    }
+    // Warning stripes on door frame
+    ctx.save();
+    const stripeCount = 5;
+    for (let si = 0; si < stripeCount; si++) {
+      ctx.fillStyle = si % 2 === 0 ? '#dd8800' : '#1a1a1a';
+      ctx.fillRect(-30 + si * 6, rbt - 58, 6, 4);
+      ctx.fillRect(-30 + si * 6, rbt, 6, 4);
+    }
+    ctx.restore();
+
+    // Research base label
+    ctx.fillStyle = '#55aacc';
+    ctx.font = 'bold 8px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('ARCTIC RESEARCH BASE', 0, rht - 10);
+
+    // Vent pipes on right wing
+    ctx.fillStyle = '#444';
+    for (let vi = 0; vi < 3; vi++) {
+      ctx.fillRect(rhw + 6 + vi * 11, rht + 50, 7, 20);
+      // Steam/exhaust
+      if (frame % 30 < 15) {
+        ctx.globalAlpha = h.alpha * (0.3 - ((frame % 30)/30)*0.3);
+        ctx.fillStyle = '#aabbcc';
+        ctx.beginPath(); ctx.arc(rhw + 9 + vi*11, rht + 46 - (frame%30)*1.5, 4, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = h.alpha;
+      }
+    }
+
+    // VOID STORM SURVIVES indicator — glowing border
+    const isVoidStorm2 = wind.force < -2.60;
+    if (isVoidStorm2) {
+      ctx.strokeStyle = `rgba(80,200,255,${0.4 + Math.sin(frame * 0.1) * 0.3})`;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-rhw - 38, rht - 2, rhw*2 + 76, rbt - rht + 4);
+    }
+
+    ctx.restore();
+
+    // E-prompt
+    const promptX = h.x - cam.x + h.w / 2;
+    const promptY = h.y - cam.y - 22;
+    if (promptX > -80 && promptX < W + 80 && h.alpha > 0.5) {
+      if (warm) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        rrect(promptX - 48, promptY - 15, 96, 19, 4); ctx.fill();
+        ctx.fillStyle = '#55ccff';
+        ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
+        ctx.fillText('[ E ]  EXIT', promptX, promptY); ctx.restore();
+      } else if (!player.inHouse && nearHouse(h)) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        rrect(promptX - 72, promptY - 15, 144, 19, 4); ctx.fill();
+        ctx.fillStyle = '#55ccff';
+        ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
+        ctx.fillText('[ E ]  RESEARCH BASE', promptX, promptY); ctx.restore();
+      }
+    }
+    return;
+  }
 
   if (isBunker) {
     // ══════════════════════════════════════════════════
@@ -4310,7 +4701,7 @@ const CHAL_LABELS = { KeyW:'W', KeyA:'A', KeyS:'S', KeyD:'D' };
 function spawnChallenge() {
   const wi = windInfo();
   if (wi.lvl < 3) return;
-  if (player.inHouse && player.inHouse.type === 'bunker') return;
+  if (player.inHouse && (player.inHouse.type === 'bunker' || player.inHouse.type === 'research')) return;
   const count = Math.min(5, wi.lvl);
   const seq = [];
   for (let i = 0; i < count; i++)
@@ -4320,7 +4711,7 @@ function spawnChallenge() {
 }
 
 function spawnTornadoChallenge() {
-  if (player.inHouse && player.inHouse.type === 'bunker') return;
+  if (player.inHouse && (player.inHouse.type === 'bunker' || player.inHouse.type === 'research')) return;
   // Harder than normal: 4–5 keys, tight timer
   const count = 3 + Math.floor(Math.random() * 2);
   const seq = [];
