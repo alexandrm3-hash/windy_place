@@ -159,46 +159,49 @@ function getWindTier() {
 function pickWindState() {
   const tier = getWindTier(), r = Math.random();
   if (tier === 0) {
-    if (r < 0.18) return WIND_STATES[0]; if (r < 0.38) return WIND_STATES[1];
-    if (r < 0.56) return WIND_STATES[2]; if (r < 0.70) return WIND_STATES[3];
-    if (r < 0.80) return WIND_STATES[4]; return WIND_STATES[5];
+    // calm + a little tailwind only
+    if (r < 0.72) return WIND_STATES[0];   // CALM
+    return WIND_STATES[5];                  // TAILWIND
   }
   if (tier === 1) {
-    if (r < 0.08) return WIND_STATES[0]; if (r < 0.26) return WIND_STATES[1];
-    if (r < 0.50) return WIND_STATES[2]; if (r < 0.70) return WIND_STATES[3];
-    if (r < 0.82) return WIND_STATES[4]; if (r < 0.94) return WIND_STATES[5];
-    return WIND_STATES[8];
+    // mostly calm, some tailwind, occasional light headwind
+    if (r < 0.50) return WIND_STATES[0];   // CALM
+    if (r < 0.82) return WIND_STATES[5];   // TAILWIND
+    return WIND_STATES[1];                  // LIGHT HEADWIND
   }
   if (tier === 2) {
-    if (r < 0.10) return WIND_STATES[1]; if (r < 0.32) return WIND_STATES[2];
-    if (r < 0.56) return WIND_STATES[3]; if (r < 0.76) return WIND_STATES[4];
-    if (r < 0.88) return WIND_STATES[5]; return WIND_STATES[8];
+    // strong tailwind dominates, some calm, tiny headwind
+    if (r < 0.55) return WIND_STATES[8];   // STRONG TAILWIND
+    if (r < 0.78) return WIND_STATES[5];   // TAILWIND
+    if (r < 0.90) return WIND_STATES[0];   // CALM
+    return WIND_STATES[1];                  // LIGHT HEADWIND
   }
   if (tier === 3) {
-    if (r < 0.06) return WIND_STATES[2]; if (r < 0.24) return WIND_STATES[3];
-    if (r < 0.60) return WIND_STATES[4]; if (r < 0.74) return WIND_STATES[5];
-    if (r < 0.90) return WIND_STATES[8]; return WIND_STATES[9];
+    // gale force is the norm, rare storm
+    if (r < 0.62) return WIND_STATES[3];   // GALE FORCE
+    if (r < 0.82) return WIND_STATES[2];   // STRONG HEADWIND
+    if (r < 0.92) return WIND_STATES[8];   // STRONG TAILWIND (break)
+    return WIND_STATES[4];                  // STORM (rare)
   }
   if (tier === 4) {
-    if (r < 0.08) return WIND_STATES[3]; if (r < 0.46) return WIND_STATES[4];
-    if (r < 0.58) return WIND_STATES[5]; if (r < 0.72) return WIND_STATES[8];
-    if (r < 0.86) return WIND_STATES[6]; return WIND_STATES[9];
+    // constant storm and strong tailwind
+    if (r < 0.55) return WIND_STATES[4];   // STORM
+    if (r < 0.85) return WIND_STATES[8];   // STRONG TAILWIND
+    return WIND_STATES[3];                  // GALE FORCE (brief relief)
   }
   if (tier === 5) {
-    if (r < 0.04) return WIND_STATES[3]; if (r < 0.34) return WIND_STATES[4];
-    if (r < 0.46) return WIND_STATES[5]; if (r < 0.58) return WIND_STATES[8];
-    if (r < 0.80) return WIND_STATES[6]; return WIND_STATES[9];
+    // tornados and storms only
+    if (r < 0.55) return WIND_STATES[6];   // TORNADO
+    return WIND_STATES[4];                  // STORM
   }
   if (tier === 6) {
-    if (r < 0.04) return WIND_STATES[4];
-    if (r < 0.14) return WIND_STATES[5]; if (r < 0.22) return WIND_STATES[8];
-    if (r < 0.36) return WIND_STATES[9]; if (r < 0.56) return WIND_STATES[6];
-    return WIND_STATES[7]; // 44% hypercane
+    // mostly hypercane, sometimes tailwind tornado
+    if (r < 0.60) return WIND_STATES[7];   // HYPERCANE
+    if (r < 0.88) return WIND_STATES[9];   // TAILWIND TORNADO
+    return WIND_STATES[6];                  // TORNADO (rare break)
   }
-  // tier 7 — VOID STORM. Almost no breaks.
-  if (r < 0.02) return WIND_STATES[4];
-  if (r < 0.06) return WIND_STATES[7]; // brief hypercane
-  return WIND_STATES[10];              // 94% VOID STORM
+  // tier 7 — VOID STORM only
+  return WIND_STATES[10];
 }
 
 function windInfo() {
