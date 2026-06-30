@@ -229,7 +229,6 @@ function baseGroundY(wx) {
   // tier 5 = up to ~60° slopes, tier 6/7 = brutal mountain terrain
   const d = startFlat * Math.max(0, terrainDrama);
 
-  const hill2 = Math.sin(wx * 0.0050 + s * 0.0072 + 2.1) * 25 * ramp;
   // Mountains only unlock after some distance AND at higher tiers
   const mtRamp = Math.min(1, Math.max(0, (wx - 2800) / 3500)) * Math.max(0, (terrainDrama - 0.5) * 2);
 
