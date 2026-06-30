@@ -492,16 +492,17 @@ function updatePlayer() {
         const dip = Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
         surfaceY += dip;
 
-        // Slope-climb assist: if player is actively moving toward the crater rim,
-        // convert horizontal velocity into upward push so they can escape even against strong wind.
+        // Slope-climb assist: nudge player.y up by the slope delta so they ride the
+        // rim instead of hitting a wall. Capped so it never lifts them off the ground —
+        // the snap below immediately corrects any tiny overshoot.
         if (wasOnGround && Math.abs(dx) > 4) {
           const slope = -3 * cr.depth * t * dx * Math.sqrt(Math.max(0, 1 - (dx*dx)/(cr.radius*cr.radius))) / (cr.radius * cr.radius);
-          // slope is dY/dX — negative means terrain rises in +x direction
           const movingTowardRim = (dx < 0 && player.vx < 0) || (dx > 0 && player.vx > 0);
           if (movingTowardRim) {
-            // Push the player up the slope proportional to their speed and slope steepness
-            const climbBoost = Math.abs(player.vx) * Math.abs(slope) * 1.4;
-            player.vy -= climbBoost;
+            // Move player up by how much the surface rises per pixel of horizontal travel,
+            // clamped to a modest step so they can never teleport through the rim.
+            const step = Math.min(Math.abs(player.vx * slope) * 1.2, 6);
+            player.y -= step;
           }
         }
       }
