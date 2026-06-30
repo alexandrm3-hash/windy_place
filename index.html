@@ -419,16 +419,31 @@ function updatePlayer() {
     if (player.inHouse.flying || player.inHouse.alpha < 0.5) {
       player.inHouse = null; // ejected by storm — fall through
     } else {
-      player.vx = 0; player.vy = 0;
-      player.x = player.inHouse.x + player.inHouse.w / 2 - player.w / 2;
       const hFloor = player.inHouse.type === 'research' ? player.inHouse.y + 240 : player.inHouse.type === 'bunker' ? player.inHouse.y + 175 : player.inHouse.y + 120;
-      player.y = hFloor - player.h;
-      player.onGround = true;
+      if (player.inHouse.type === 'research') {
+        // Free movement inside research base — bounded to interior width
+        const sm = player.sprinting && !staminaDepleted ? 1.45 : 1.0;
+        if (!chalActive && goLeft())  { player.vx -= 0.80 * sm; player.facing = -1; }
+        if (!chalActive && goRight()) { player.vx += 0.80 * sm; player.facing =  1; }
+        if (chalActive || (!goLeft() && !goRight())) player.vx *= 0.72;
+        player.vx = Math.max(-4, Math.min(4, player.vx));
+        player.x += player.vx;
+        player.y  = hFloor - player.h;
+        player.onGround = true;
+        // Clamp to interior bounds (research base is 320px wide centered on h.x+h.w/2)
+        const hcx = player.inHouse.x + player.inHouse.w / 2;
+        player.x = Math.max(hcx - 148, Math.min(hcx + 140, player.x));
+      } else {
+        player.vx = 0; player.vy = 0;
+        player.x = player.inHouse.x + player.inHouse.w / 2 - player.w / 2;
+        player.y = hFloor - player.h;
+        player.onGround = true;
+      }
       cam.x += (player.x - W * 0.35 - cam.x) * 0.11;
       if (cam.x < 0) cam.x = 0;
       cam.y += (player.y - H * 0.60 - cam.y) * 0.09;
       if (player.x > maxReach) maxReach = player.x;
-      // Regen stamina while sheltered in a house
+      // Regen stamina while sheltered
       player.sprinting = false;
       if (staminaDepleted) {
         if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
@@ -476,6 +491,19 @@ function updatePlayer() {
         const t   = Math.min(1, cr.age / 60);
         const dip = Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
         surfaceY += dip;
+
+        // Slope-climb assist: if player is actively moving toward the crater rim,
+        // convert horizontal velocity into upward push so they can escape even against strong wind.
+        if (wasOnGround && Math.abs(dx) > 4) {
+          const slope = -3 * cr.depth * t * dx * Math.sqrt(Math.max(0, 1 - (dx*dx)/(cr.radius*cr.radius))) / (cr.radius * cr.radius);
+          // slope is dY/dX — negative means terrain rises in +x direction
+          const movingTowardRim = (dx < 0 && player.vx < 0) || (dx > 0 && player.vx > 0);
+          if (movingTowardRim) {
+            // Push the player up the slope proportional to their speed and slope steepness
+            const climbBoost = Math.abs(player.vx) * Math.abs(slope) * 1.4;
+            player.vy -= climbBoost;
+          }
+        }
       }
     }
 
@@ -2798,31 +2826,39 @@ function drawResearchInterior_OLD_REPLACED() { // dead code
   ctx.textAlign = 'left';
 
   // ── Player stickman inside ───────────────────────────────
-  // Positioned near center-bottom, facing right — matches the outdoor character (torus head, no scarf)
-  const psx = IW / 2 + 10;
-  const psy = IH - 80;
-  const walkCycle = Math.sin(frame * 0.08) * 0.3;
+  // Position mirrors the actual player world position mapped into interior screen space
+  const hcx2 = player.inHouse.x + player.inHouse.w / 2;
+  const psx = IW / 2 + (player.x + player.w / 2 - hcx2);
+  const psy = IH - 72;
+  const pMoving = Math.abs(player.vx) > 0.3;
+  const pPhase  = pMoving ? (player.walkF / 6) * Math.PI * 2 : 0;
+  const pf = player.facing;
   const sc2 = '#d8eeff';
+  ctx.save();
+  ctx.translate(psx, psy);
+  if (pf < 0) ctx.scale(-1, 1);
   ctx.strokeStyle = sc2; ctx.fillStyle = sc2;
   ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   // Legs
-  ctx.beginPath(); ctx.moveTo(psx, psy - 10); ctx.lineTo(psx - 5 + Math.sin(frame*0.08)*3, psy); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(psx, psy - 10); ctx.lineTo(psx + 5 - Math.sin(frame*0.08)*3, psy); ctx.stroke();
+  const lSwing = pMoving ? Math.sin(pPhase) * 0.45 : 0.04;
+  ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(Math.sin(lSwing)*8-3, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(Math.sin(lSwing+Math.PI)*8+3, 0); ctx.stroke();
   // Body
-  ctx.beginPath(); ctx.moveTo(psx, psy - 24); ctx.lineTo(psx, psy - 10); ctx.stroke();
-  // Arms (relaxed, looking at big screen)
-  ctx.beginPath(); ctx.moveTo(psx, psy - 20); ctx.lineTo(psx - 8, psy - 14 + walkCycle*2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(psx, psy - 20); ctx.lineTo(psx + 8, psy - 14 - walkCycle*2); ctx.stroke();
-  // Torus head — donut ring, same style as the outdoor character
-  const phcy = psy - 32;
+  ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(0, -4); ctx.stroke();
+  // Arms
+  const aSwing = pMoving ? Math.sin(pPhase + Math.PI) * 0.35 : -0.15;
+  ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(Math.sin(aSwing)*9-7, -9); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(Math.sin(aSwing+Math.PI)*9+7, -9); ctx.stroke();
+  // Torus head
   ctx.fillStyle = sc2;
   ctx.beginPath();
-  ctx.arc(psx, phcy, 8, 0, Math.PI*2, false);
-  ctx.arc(psx, phcy, 5, 0, Math.PI*2, true);
+  ctx.arc(0, -26, 8, 0, Math.PI*2, false);
+  ctx.arc(0, -26, 5, 0, Math.PI*2, true);
   ctx.fill('evenodd');
   ctx.strokeStyle = sc2; ctx.lineWidth = 1.8;
-  ctx.beginPath(); ctx.arc(psx, phcy, 8, 0, Math.PI*2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(psx, phcy, 5, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, -26, 8, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, -26, 5, 0, Math.PI*2); ctx.stroke();
+  ctx.restore();
 
   // ── Top-left corner HUD-like panel ──────────────────────
   ctx.fillStyle = 'rgba(10,20,40,0.85)';
@@ -2862,14 +2898,6 @@ function drawResearchInterior() {
     // rx,ry = feet position; facing = 1 right / -1 left; screenDir = direction arms point to monitor
     const bob  = Math.sin(f * 0.04 + bobOffset) * 1.0;
     const type = variant % 4;
-    // chair
-    ctx.fillStyle = '#1e2230';
-    ctx.fillRect(rx - 12, ry - 10, 24, 4);   // seat
-    ctx.fillRect(rx - 2,  ry - 6,  4,  6);   // post
-    ctx.fillRect(rx + facing * 14, ry - 24, 3, 18); // back
-    // armrests
-    ctx.fillRect(rx - 10, ry - 14, 4, 4);
-    ctx.fillRect(rx + 6,  ry - 14, 4, 4);
     const sc = '#d0dff0'; ctx.strokeStyle = sc; ctx.fillStyle = sc;
     ctx.lineWidth = 2.0; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     // thighs horizontal
@@ -2940,6 +2968,136 @@ function drawResearchInterior() {
   bgGrd.addColorStop(0.3, '#0b1020');
   bgGrd.addColorStop(1,   '#0e1318');
   ctx.fillStyle = bgGrd; ctx.fillRect(0,0,IW,IH);
+
+  // ── BACK-WALL WINDOW showing outdoor storm ──────────────
+  {
+    const winCount = 3;
+    const winW = 110, winH = 90;
+    const winY  = 58;
+    const winGap = (IW - 90 - 88 - winCount * winW) / (winCount + 1);
+    const isVoidNow2 = wind.force < -2.60;
+    const isHyper2   = wind.force < -1.20;
+
+    for (let wi = 0; wi < winCount; wi++) {
+      const wx = 90 + winGap + wi * (winW + winGap);
+
+      // Window frame (thick dark border with inset bevel)
+      ctx.fillStyle = '#0c0e18';
+      ctx.fillRect(wx - 5, winY - 5, winW + 10, winH + 10);
+      ctx.fillStyle = '#181c2c';
+      ctx.fillRect(wx - 3, winY - 3, winW + 6, winH + 6);
+
+      // Clip to window glass
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(wx, winY, winW, winH);
+      ctx.clip();
+
+      // Sky gradient (matches outdoor sky tone for current storm tier)
+      const skyGrd = ctx.createLinearGradient(wx, winY, wx, winY + winH);
+      if (isVoidNow2) {
+        skyGrd.addColorStop(0, '#04020a'); skyGrd.addColorStop(1, '#100820');
+      } else if (isHyper2) {
+        skyGrd.addColorStop(0, '#0d0418'); skyGrd.addColorStop(1, '#1a0830');
+      } else {
+        skyGrd.addColorStop(0, '#0a1020'); skyGrd.addColorStop(1, '#1a2848');
+      }
+      ctx.fillStyle = skyGrd; ctx.fillRect(wx, winY, winW, winH);
+
+      // Distant ground strip
+      ctx.fillStyle = isVoidNow2 ? '#06040c' : isHyper2 ? '#0c0618' : '#0e1424';
+      ctx.fillRect(wx, winY + winH * 0.72, winW, winH * 0.28);
+      ctx.fillStyle = isVoidNow2 ? '#080610' : '#101828';
+      ctx.fillRect(wx, winY + winH * 0.76, winW, winH * 0.24);
+
+      // Snow / debris particles streaking past
+      ctx.fillStyle = isVoidNow2 ? 'rgba(180,100,255,0.55)' : 'rgba(200,220,255,0.45)';
+      for (let pi = 0; pi < 18; pi++) {
+        const px = wx + ((pi * 61 + f * (3 + pi % 3)) % winW);
+        const py = winY + (pi * 43 + f * (1.5 + pi % 5) * 0.7) % winH;
+        const ps = 0.5 + (pi % 3) * 0.5;
+        ctx.beginPath(); ctx.ellipse(px, py, ps * 3, ps, 0, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Tornado / storm vortex (if active)
+      if (tornado && tornado.alpha > 0.05) {
+        const tScale2 = tornado.scale || 1;
+        const isVoidT = tScale2 > 3.0, isHyperT = tScale2 > 1.2;
+        // Map tornado world-x into window space
+        const tWorldX = tornado.x - cam.x;
+        const tSceneW = W;
+        const tWinX   = wx + (tWorldX / tSceneW) * winW;
+        const tWinBaseY = winY + winH * 0.76;
+        const tH = winH * 0.68 * tScale2, tW = winW * 0.22 * tScale2;
+        const ang2 = tornado.angle;
+        const ta   = Math.min(tornado.alpha, 1) * 0.85;
+
+        // Halo
+        ctx.globalAlpha = ta * 0.3;
+        const hg = ctx.createRadialGradient(tWinX, tWinBaseY - tH * 0.4, 0, tWinX, tWinBaseY - tH * 0.4, tW * 2.5);
+        hg.addColorStop(0, isVoidT ? 'rgba(80,0,120,0.7)' : isHyperT ? 'rgba(60,10,100,0.5)' : 'rgba(30,50,90,0.5)');
+        hg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = hg; ctx.fillRect(wx, winY, winW, winH);
+        ctx.globalAlpha = 1;
+
+        // Funnel bands
+        for (let band = 0; band < 14; band++) {
+          const t2 = band / 13;
+          const bandY2 = tWinBaseY - tH * (1 - t2);
+          const bandW2 = tW * (1 - t2) * 0.9 + 2;
+          const twist2 = ang2 * 2 + t2 * Math.PI * 5;
+          const sx2 = Math.sin(twist2) * bandW2 * 0.28;
+          ctx.globalAlpha = ta * (0.15 + (1 - t2) * 0.5);
+          ctx.strokeStyle = isVoidT
+            ? `rgba(${(60 + t2*80)|0},${(0 + t2*20)|0},${(120 + t2*60)|0},0.9)`
+            : isHyperT
+              ? `rgba(${(30 + t2*40)|0},${(10 + t2*20)|0},${(60 + t2*40)|0},0.9)`
+              : `rgba(${(50 + t2*60)|0},${(70 + t2*50)|0},${(100 + t2*40)|0},0.9)`;
+          ctx.lineWidth = (1.5 + (1 - t2) * 2.5) * tScale2;
+          ctx.beginPath();
+          ctx.ellipse(tWinX + sx2, bandY2, bandW2, bandW2 * 0.15, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+
+        // Ground touchdown swirl
+        ctx.globalAlpha = ta * 0.6;
+        ctx.strokeStyle = isVoidT ? 'rgba(140,0,255,0.7)' : isHyperT ? 'rgba(80,20,160,0.6)' : 'rgba(60,80,140,0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(tWinX, tWinBaseY, tW * 0.35, 4, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // Window glare / reflections
+      ctx.fillStyle = 'rgba(200,220,255,0.04)';
+      ctx.beginPath();
+      ctx.moveTo(wx, winY); ctx.lineTo(wx + winW * 0.4, winY);
+      ctx.lineTo(wx + winW * 0.2, winY + winH * 0.6); ctx.lineTo(wx, winY + winH * 0.6);
+      ctx.closePath(); ctx.fill();
+
+      ctx.restore(); // end clip
+
+      // Window cross-bars
+      ctx.strokeStyle = '#181c2c'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(wx + winW / 2, winY); ctx.lineTo(wx + winW / 2, winY + winH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(wx, winY + winH / 2); ctx.lineTo(wx + winW, winY + winH / 2); ctx.stroke();
+
+      // Outer frame bevel highlight
+      ctx.strokeStyle = '#22263a'; ctx.lineWidth = 1;
+      ctx.strokeRect(wx - 3, winY - 3, winW + 6, winH + 6);
+      ctx.strokeStyle = '#0a0c14'; ctx.lineWidth = 1;
+      ctx.strokeRect(wx - 5, winY - 5, winW + 10, winH + 10);
+
+      // Condensation frost on cold glass (subtle)
+      ctx.fillStyle = 'rgba(160,190,220,0.06)';
+      ctx.fillRect(wx, winY + winH - 12, winW, 12);
+      ctx.strokeStyle = 'rgba(140,170,210,0.12)'; ctx.lineWidth = 0.5;
+      for (let fr = 0; fr < 5; fr++) {
+        const fy = winY + winH - 2 - fr * 2.2;
+        ctx.beginPath(); ctx.moveTo(wx, fy); ctx.lineTo(wx + winW, fy); ctx.stroke();
+      }
+    }
+  }
 
   // ── FLOOR ──────────────────────────────────────────────
   const floorY = IH - 72;
@@ -3309,146 +3467,461 @@ function drawResearchInterior() {
 
   for (const dk of desks) {
     const dx=dk.x, dy=dk.y;
-    // Desk body
-    ctx.fillStyle='#181c28';
-    ctx.fillRect(dx-4, dy-44, 90, 14);   // desktop
-    ctx.fillStyle='#111420';
-    ctx.fillRect(dx+6,  dy-30, 10, 30);  // leg L
-    ctx.fillRect(dx+60, dy-30, 10, 30);  // leg R
-    // Desk edge highlight
-    ctx.fillStyle='#22263a'; ctx.fillRect(dx-4,dy-44,90,3);
-    // Monitor
-    ctx.fillStyle='#111520';
-    ctx.fillRect(dx+30,dy-88,40,46);      // frame
-    ctx.strokeStyle='#1e2438'; ctx.lineWidth=1; ctx.strokeRect(dx+30,dy-88,40,46);
-    ctx.fillStyle='#080e1a';
-    ctx.fillRect(dx+33,dy-85,34,38);      // screen
-    ctx.fillRect(dx+46,dy-44,8,10);       // stand
-    ctx.fillRect(dx+36,dy-36,28,4);       // base
-
-    // Screen content (unique per desk index)
     const di=desks.indexOf(dk);
-    const sx3=dx+33, sy3=dy-85, sw=34, sh=38;
-    if (di===0) { // spectral wave
-      ctx.fillStyle='#0a0018'; ctx.fillRect(sx3,sy3,sw,sh);
-      ctx.strokeStyle='#aa44ff'; ctx.lineWidth=1;
-      ctx.beginPath();
-      for (let gx=0;gx<=sw;gx++) {
-        const gy=sy3+sh/2+Math.sin((gx+f*1.3)*0.25)*8+Math.cos((gx*0.1+f*0.3))*4;
-        gx===0?ctx.moveTo(sx3+gx,gy):ctx.lineTo(sx3+gx,gy);
-      }
-      ctx.stroke();
-      ctx.fillStyle='#8833cc'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      ctx.fillText('SPECTRUM',sx3+2,sy3+7);
-    } else if (di===1) { // temperature chart
-      ctx.fillStyle='#020816'; ctx.fillRect(sx3,sy3,sw,sh);
-      for (let bi=0;bi<sw;bi+=4) {
-        const bh=4+Math.sin((bi+f*0.15)*0.3)*7;
-        const bc=bi/sw;
-        ctx.fillStyle=`rgba(${Math.floor(30+bc*80)},${Math.floor(100+bc*80)},255,0.8)`;
-        ctx.fillRect(sx3+bi,sy3+sh-bh,3,bh);
-      }
-      ctx.fillStyle='#4499ff'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      ctx.fillText('TEMP °C',sx3+2,sy3+7);
-    } else if (di===2) { // radar
-      ctx.fillStyle='#001408'; ctx.fillRect(sx3,sy3,sw,sh);
-      const rcx=sx3+sw/2, rcy=sy3+sh/2;
-      ctx.strokeStyle='rgba(0,200,80,0.25)'; ctx.lineWidth=0.6;
-      for (let rr=1;rr<=3;rr++) { ctx.beginPath(); ctx.arc(rcx,rcy,rr*5,0,Math.PI*2); ctx.stroke(); }
-      const sa2=(f*0.07)%(Math.PI*2);
-      ctx.strokeStyle='rgba(0,255,100,0.7)'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(rcx,rcy); ctx.lineTo(rcx+Math.cos(sa2)*16,rcy+Math.sin(sa2)*16); ctx.stroke();
-      ctx.fillStyle=`rgba(0,180,60,0.15)`;
-      ctx.beginPath(); ctx.moveTo(rcx,rcy); ctx.arc(rcx,rcy,16,sa2-0.8,sa2); ctx.closePath(); ctx.fill();
-      ctx.fillStyle='rgba(0,255,80,0.8)';
-      for (const bp of [{bx:5,by:-3},{bx:-7,by:6},{bx:11,by:2}]) {
-        ctx.beginPath(); ctx.arc(rcx+bp.bx,rcy+bp.by,1.5,0,Math.PI*2); ctx.fill();
-      }
-      ctx.fillStyle='#00cc55'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      ctx.fillText('RADAR',sx3+2,sy3+7);
-    } else if (di===3) { // code/terminal
-      ctx.fillStyle='#000a00'; ctx.fillRect(sx3,sy3,sw,sh);
-      ctx.fillStyle='#00cc44'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      const codeLines=['> INIT...','> SCAN...','> T:'+getWindTier(),'> '+Math.floor(maxReach/12)+'m','> OK'];
-      const coff=Math.floor(f*0.04)%5;
-      for (let cl=0;cl<5;cl++) {
-        ctx.fillStyle=cl===4?'#44ff88':'rgba(0,200,60,0.7)';
-        ctx.fillText(codeLines[(cl+coff)%5],sx3+2,sy3+10+cl*6);
-      }
-      if (f%40<20) ctx.fillRect(sx3+2,sy3+36,4,5);
-    } else if (di===4) { // pressure gauge
-      ctx.fillStyle='#080a10'; ctx.fillRect(sx3,sy3,sw,sh);
-      const pcx=sx3+sw/2, pcy=sy3+sh/2+4;
-      ctx.strokeStyle='rgba(100,180,255,0.3)'; ctx.lineWidth=0.6;
-      ctx.beginPath(); ctx.arc(pcx,pcy,13,0,Math.PI*2); ctx.stroke();
-      for (let gti=0;gti<=8;gti++) {
-        const ga=Math.PI*0.75+gti*(Math.PI*1.5/8);
-        ctx.beginPath(); ctx.moveTo(pcx+Math.cos(ga)*10,pcy+Math.sin(ga)*10);
-        ctx.lineTo(pcx+Math.cos(ga)*13,pcy+Math.sin(ga)*13); ctx.stroke();
-      }
-      const nA=Math.PI*0.75+(Math.abs(wind.force)/4)*Math.PI*1.5;
-      ctx.strokeStyle='#ff6644'; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.moveTo(pcx,pcy); ctx.lineTo(pcx+Math.cos(nA)*11,pcy+Math.sin(nA)*11); ctx.stroke();
-      ctx.fillStyle='#88aacc'; ctx.beginPath(); ctx.arc(pcx,pcy,2,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle='#4488cc'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      ctx.fillText('PRESSURE',sx3+2,sy3+7);
-    } else if (di===5) { // energy histogram
-      ctx.fillStyle='#0a0810'; ctx.fillRect(sx3,sy3,sw,sh);
-      for (let ei=0;ei<8;ei++) {
-        const eh=4+Math.abs(Math.sin(f*0.06+ei*0.8))*22;
-        ctx.fillStyle=`rgba(180,${80+ei*20},255,0.8)`;
-        ctx.fillRect(sx3+2+ei*4,sy3+sh-eh,3,eh);
-      }
-      ctx.fillStyle='#cc88ff'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      ctx.fillText('ENERGY',sx3+2,sy3+7);
-    } else if (di===6) { // network topology
-      ctx.fillStyle='#040c0c'; ctx.fillRect(sx3,sy3,sw,sh);
-      const nodes=[{x:17,y:19},{x:5,y:8},{x:29,y:8},{x:5,y:30},{x:29,y:30},{x:17,y:35}];
-      ctx.strokeStyle='rgba(0,220,200,0.5)'; ctx.lineWidth=0.8;
-      for (let ni=1;ni<nodes.length;ni++) {
-        ctx.beginPath(); ctx.moveTo(sx3+nodes[0].x,sy3+nodes[0].y);
-        ctx.lineTo(sx3+nodes[ni].x,sy3+nodes[ni].y); ctx.stroke();
-      }
-      for (const nd of nodes) {
-        ctx.fillStyle=`rgba(0,200,180,${0.6+Math.sin(f*0.08+nd.x)*0.3})`;
-        ctx.beginPath(); ctx.arc(sx3+nd.x,sy3+nd.y,2.5,0,Math.PI*2); ctx.fill();
-      }
-      ctx.fillStyle='#00cccc'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      ctx.fillText('NETWORK',sx3+2,sy3+7);
-    } else { // void sensor
-      ctx.fillStyle='#08000c'; ctx.fillRect(sx3,sy3,sw,sh);
-      const vcx=sx3+sw/2, vcy=sy3+sh/2;
-      for (let vr=1;vr<=4;vr++) {
-        const vt=((f*0.8+vr*15)%60)/60;
-        ctx.strokeStyle=`rgba(160,40,255,${(1-vt)*0.6})`;
-        ctx.lineWidth=1;
-        ctx.beginPath(); ctx.arc(vcx,vcy,vr*4*vt+1,0,Math.PI*2); ctx.stroke();
-      }
-      ctx.fillStyle='rgba(200,80,255,0.9)'; ctx.beginPath(); ctx.arc(vcx,vcy,2,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle='#cc44ff'; ctx.font='5px Courier New'; ctx.textAlign='left';
-      ctx.fillText('VOID SENS',sx3+2,sy3+7);
+
+    // ── CHAIR (detailed, drawn first so desk sits on top) ────
+    const chx = dx + 46;
+    // Caster wheels (5 spokes)
+    ctx.fillStyle='#0e0f16'; ctx.strokeStyle='#2a2c3a'; ctx.lineWidth=0.8;
+    for (let sp=0;sp<5;sp++) {
+      const ca=sp*(Math.PI*2/5);
+      ctx.beginPath(); ctx.moveTo(chx,dy-3); ctx.lineTo(chx+Math.cos(ca)*10,dy-3+Math.sin(ca)*3); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(chx+Math.cos(ca)*10,dy-3+Math.sin(ca)*3,3,2,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(chx,dy-3,3,0,Math.PI*2); ctx.fillStyle='#1e2030'; ctx.fill();
+    // Pneumatic post
+    ctx.fillStyle='#191b28'; ctx.fillRect(chx-2,dy-22,4,18);
+    ctx.fillStyle='#22243a'; ctx.fillRect(chx-1,dy-22,2,18);
+    // Seat cushion
+    ctx.fillStyle='#1a1e2e';
+    ctx.beginPath(); ctx.roundRect(chx-14,dy-28,28,9,3); ctx.fill();
+    ctx.fillStyle='#232740';
+    ctx.beginPath(); ctx.roundRect(chx-13,dy-27,26,4,2); ctx.fill();
+    ctx.strokeStyle='#2c3050'; ctx.lineWidth=0.8; ctx.strokeRect(chx-14,dy-28,28,9);
+    // Seat seam stitching
+    ctx.strokeStyle='#121420'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(chx-8,dy-28); ctx.lineTo(chx-8,dy-19); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(chx+8,dy-28); ctx.lineTo(chx+8,dy-19); ctx.stroke();
+    // Armrests
+    ctx.fillStyle='#14161f';
+    ctx.fillRect(chx-16,dy-36,5,12); ctx.fillRect(chx+11,dy-36,5,12);
+    ctx.fillStyle='#1c1e2c';
+    ctx.fillRect(chx-16,dy-36,5,4); ctx.fillRect(chx+11,dy-36,5,4);
+    // Chair back (tall ergonomic)
+    ctx.fillStyle='#161828';
+    ctx.beginPath(); ctx.roundRect(chx+dk.fac*14-2,dy-70,6,50,2); ctx.fill();
+    ctx.fillStyle='#1a1c2e';
+    ctx.beginPath(); ctx.roundRect(chx+dk.fac*12,dy-68,14,46,3); ctx.fill();
+    ctx.strokeStyle='#22253a'; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.roundRect(chx+dk.fac*12,dy-68,14,46,3); ctx.stroke();
+    // Lumbar support bump
+    ctx.fillStyle='#1e2236';
+    ctx.beginPath(); ctx.ellipse(chx+dk.fac*19,dy-42,3,6,0,0,Math.PI*2); ctx.fill();
+    // Headrest
+    ctx.fillStyle='#1a1c2e';
+    ctx.beginPath(); ctx.roundRect(chx+dk.fac*12,dy-78,14,10,3); ctx.fill();
+    ctx.strokeStyle='#22253a'; ctx.strokeRect(chx+dk.fac*12,dy-78,14,10);
+
+    // ── DESK ─────────────────────────────────────────────────
+    // Side modesty panel
+    ctx.fillStyle='#111420';
+    ctx.fillRect(dx+3,  dy-44, 6, 44);
+    ctx.fillRect(dx+67, dy-44, 6, 44);
+    // Legs with cross-brace
+    ctx.fillStyle='#0e1018';
+    ctx.fillRect(dx+4,  dy-32, 8, 32);   // leg L
+    ctx.fillRect(dx+64, dy-32, 8, 32);   // leg R
+    ctx.fillStyle='#13151f'; ctx.fillRect(dx+12,dy-18,52,4); // cross-brace
+    // Cable tray under desk
+    ctx.fillStyle='#0c0e18'; ctx.fillRect(dx+20,dy-20,40,4);
+    ctx.strokeStyle='#1a1c28'; ctx.lineWidth=0.5;
+    for (let ct=0;ct<5;ct++) ctx.strokeRect(dx+21+ct*7,dy-20,5,4);
+    // Desktop surface
+    ctx.fillStyle='#191d2e';
+    ctx.fillRect(dx-4, dy-44, 90, 12);
+    // Surface highlight edge
+    ctx.fillStyle='#242840'; ctx.fillRect(dx-4,dy-44,90,2);
+    // Surface texture (faint grid)
+    ctx.strokeStyle='rgba(255,255,255,0.02)'; ctx.lineWidth=1;
+    for (let tg=0;tg<90;tg+=12) { ctx.beginPath(); ctx.moveTo(dx-4+tg,dy-44); ctx.lineTo(dx-4+tg,dy-32); ctx.stroke(); }
+    // Desk edge strip (LED underglow)
+    const deskGlow = ctx.createLinearGradient(dx-4,dy-32,dx+86,dy-32);
+    deskGlow.addColorStop(0,'rgba(40,100,255,0.0)');
+    deskGlow.addColorStop(0.3,`rgba(40,100,255,${0.06+Math.sin(f*0.02+di)*0.03})`);
+    deskGlow.addColorStop(0.7,`rgba(40,100,255,${0.06+Math.sin(f*0.02+di)*0.03})`);
+    deskGlow.addColorStop(1,'rgba(40,100,255,0.0)');
+    ctx.fillStyle=deskGlow; ctx.fillRect(dx-4,dy-33,90,3);
+
+    // ── MONITOR ──────────────────────────────────────────────
+    // Stand neck
+    ctx.fillStyle='#0f1118';
+    ctx.fillRect(dx+47,dy-44,6,10);       // neck
+    // Stand base (wider, bevelled)
+    ctx.fillStyle='#141620';
+    ctx.beginPath(); ctx.roundRect(dx+36,dy-36,28,6,2); ctx.fill();
+    ctx.fillStyle='#1c1e2a'; ctx.fillRect(dx+37,dy-36,26,2);
+    // Monitor outer shell
+    ctx.fillStyle='#0d1020';
+    ctx.beginPath(); ctx.roundRect(dx+26,dy-94,48,52,3); ctx.fill();
+    ctx.strokeStyle='#1e2235'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.roundRect(dx+26,dy-94,48,52,3); ctx.stroke();
+    // Inner bezel (slight inset)
+    ctx.fillStyle='#090c14';
+    ctx.beginPath(); ctx.roundRect(dx+28,dy-92,44,48,2); ctx.fill();
+    // Screen glass (slightly lighter)
+    ctx.fillStyle='#07090f';
+    ctx.fillRect(dx+30,dy-90,40,44);
+    // Screen glare reflection
+    ctx.fillStyle='rgba(255,255,255,0.025)';
+    ctx.beginPath();
+    ctx.moveTo(dx+30,dy-90); ctx.lineTo(dx+50,dy-90);
+    ctx.lineTo(dx+40,dy-72); ctx.lineTo(dx+30,dy-72);
+    ctx.closePath(); ctx.fill();
+    // Monitor status LED (bottom center)
+    const monLedOn = (f+di*7)%120 < 90;
+    ctx.fillStyle = monLedOn ? '#1aff88' : '#0a2010';
+    ctx.beginPath(); ctx.arc(dx+50,dy-44+1,1.8,0,Math.PI*2); ctx.fill();
+    // Power button (bottom right of bezel)
+    ctx.fillStyle='#1a1e2e'; ctx.beginPath(); ctx.arc(dx+71,dy-44+2,2.5,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#303450'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.arc(dx+71,dy-44+2,2.5,0,Math.PI*2); ctx.stroke();
+    // Side vents on monitor frame
+    ctx.strokeStyle='#181c2a'; ctx.lineWidth=0.6;
+    for (let v=0;v<4;v++) {
+      ctx.beginPath(); ctx.moveTo(dx+26,dy-88+v*5); ctx.lineTo(dx+28,dy-88+v*5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(dx+74,dy-88+v*5); ctx.lineTo(dx+72,dy-88+v*5); ctx.stroke();
     }
 
-    // Paper/notes on desk
-    ctx.fillStyle='#e8e0d0';
-    ctx.save(); ctx.translate(dx+8,dy-32); ctx.rotate(-0.05+Math.sin(di)*0.04);
-    ctx.fillRect(0,0,18,24); ctx.restore();
-    ctx.fillStyle='#d0c8b8';
-    ctx.save(); ctx.translate(dx+10,dy-30); ctx.rotate(0.06+Math.cos(di)*0.03);
-    ctx.fillRect(0,0,18,24); ctx.restore();
-    // Pencil on desk
-    ctx.save(); ctx.translate(dx+8,dy-42); ctx.rotate(0.2);
-    ctx.fillStyle='#ddcc44'; ctx.fillRect(0,0,24,3);
-    ctx.fillStyle='#ee8833'; ctx.fillRect(22,0,4,3);
-    ctx.fillStyle='#f0f0e0'; ctx.fillRect(-2,0,4,3);
-    ctx.restore();
+    // ── SECOND SMALL SIDE MONITOR ─────────────────────────────
+    const sm2x = dx + (dk.sd > 0 ? -26 : 86);
+    ctx.fillStyle='#0d1020';
+    ctx.beginPath(); ctx.roundRect(sm2x,dy-78,22,30,2); ctx.fill();
+    ctx.strokeStyle='#1a1e30'; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.roundRect(sm2x,dy-78,22,30,2); ctx.stroke();
+    ctx.fillStyle='#070910'; ctx.fillRect(sm2x+2,dy-76,18,26);
+    ctx.fillStyle='#0e1018'; ctx.fillRect(sm2x+8,dy-48,6,6); // stand
+    ctx.fillStyle='#141620'; ctx.fillRect(sm2x+4,dy-44,14,3); // base
+    // Side monitor LED
+    ctx.fillStyle=monLedOn?'#1aff88':'#0a2010';
+    ctx.beginPath(); ctx.arc(sm2x+11,dy-44,1.2,0,Math.PI*2); ctx.fill();
+    // Side monitor screen content (simpler version of main)
+    const smsx=sm2x+2, smsy=dy-76, smsw=18, smsh=26;
 
-    // Desk side cable
-    ctx.strokeStyle='#1a1030'; ctx.lineWidth=2;
+    // ── KEYBOARD ─────────────────────────────────────────────
+    ctx.fillStyle='#111420';
+    ctx.beginPath(); ctx.roundRect(dx+10,dy-38,46,10,2); ctx.fill();
+    ctx.strokeStyle='#1c2030'; ctx.lineWidth=0.7; ctx.strokeRect(dx+10,dy-38,46,10);
+    // Key rows
+    const keyColors=['#141828','#131726','#121624'];
+    for (let kr=0;kr<3;kr++) {
+      for (let kc=0;kc<(kr===0?14:kr===1?13:11);kc++) {
+        ctx.fillStyle=keyColors[kr];
+        ctx.beginPath(); ctx.roundRect(dx+11+kc*3.2,dy-37+kr*3,2.8,2.4,0.4); ctx.fill();
+        ctx.strokeStyle='rgba(80,100,160,0.25)'; ctx.lineWidth=0.3;
+        ctx.strokeRect(dx+11+kc*3.2,dy-37+kr*3,2.8,2.4);
+      }
+    }
+    // Spacebar
+    ctx.fillStyle='#141828';
+    ctx.beginPath(); ctx.roundRect(dx+20,dy-28,24,2.4,0.4); ctx.fill();
+    // Keyboard LED strip (subtle)
+    ctx.fillStyle=`rgba(60,120,255,${0.08+Math.sin(f*0.03+di)*0.04})`;
+    ctx.fillRect(dx+10,dy-29,46,1);
+
+    // ── MOUSE ─────────────────────────────────────────────────
+    const msx2 = dx + (dk.sd > 0 ? 62 : 4);
+    ctx.fillStyle='#121520';
+    ctx.beginPath(); ctx.ellipse(msx2,dy-35,5,7,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#1e2235'; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.ellipse(msx2,dy-35,5,7,0,0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle='#1a1d2c'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(msx2,dy-42); ctx.lineTo(msx2,dy-28); ctx.stroke(); // centre divide
+    ctx.fillStyle='rgba(80,120,255,0.3)';
+    ctx.beginPath(); ctx.ellipse(msx2,dy-40,2,1.5,0,0,Math.PI*2); ctx.fill(); // scroll wheel
+
+    // ── CABLES ────────────────────────────────────────────────
+    ctx.lineCap='round';
+    // Power cable (thick, dark)
+    ctx.strokeStyle='#0e0f18'; ctx.lineWidth=2.5;
     ctx.beginPath();
-    ctx.moveTo(dx+50,dy-44);
-    ctx.quadraticCurveTo(dx+52,dy-20,dx+55,dy);
+    ctx.moveTo(dx+50,dy-42);
+    ctx.bezierCurveTo(dx+54,dy-28, dx+58,dy-14, dx+56,dy);
     ctx.stroke();
+    // USB cable
+    ctx.strokeStyle='#161828'; ctx.lineWidth=1.2;
+    ctx.beginPath();
+    ctx.moveTo(dx+46,dy-42);
+    ctx.bezierCurveTo(dx+48,dy-30, dx+44,dy-16, dx+46,dy);
+    ctx.stroke();
+    // Side monitor cable
+    ctx.strokeStyle='#131520'; ctx.lineWidth=1.2;
+    ctx.beginPath();
+    ctx.moveTo(sm2x+11,dy-48);
+    ctx.bezierCurveTo(sm2x+14,dy-40, dx+50,dy-36, dx+50,dy-42);
+    ctx.stroke();
+
+    // ── DESK CLUTTER ──────────────────────────────────────────
+    // Stacked papers (slightly rotated)
+    ctx.fillStyle='#d8d0c0';
+    ctx.save(); ctx.translate(dx+6,dy-44); ctx.rotate(-0.04+Math.sin(di)*0.05);
+    ctx.fillRect(0,0,20,26); ctx.restore();
+    ctx.fillStyle='#e0d8c8';
+    ctx.save(); ctx.translate(dx+7,dy-43); ctx.rotate(0.05+Math.cos(di)*0.04);
+    ctx.fillRect(0,0,20,26); ctx.restore();
+    // Lines on paper
+    ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.lineWidth=0.6;
+    for (let pl=0;pl<5;pl++) {
+      ctx.beginPath(); ctx.moveTo(dx+9,dy-40+pl*4); ctx.lineTo(dx+24,dy-40+pl*4); ctx.stroke();
+    }
+    // Pen
+    ctx.save(); ctx.translate(dx+6,dy-44); ctx.rotate(0.22);
+    ctx.fillStyle='#1a3a6a'; ctx.fillRect(0,0,26,2.5);
+    ctx.fillStyle='#2244aa'; ctx.fillRect(0,0,4,2.5);
+    ctx.fillStyle='#c8c0b0'; ctx.fillRect(22,0,4,2.5);
+    ctx.fillStyle='#888'; ctx.fillRect(20,0,3,2.5);
+    ctx.restore();
+    // Coffee mug (for even desks)
+    if (di%2===0) {
+      const mgx=dx+72, mgy=dy-44;
+      ctx.fillStyle='#1a1028'; ctx.beginPath(); ctx.roundRect(mgx,mgy-12,9,12,1); ctx.fill();
+      ctx.strokeStyle='#2a1a40'; ctx.lineWidth=0.8; ctx.strokeRect(mgx,mgy-12,9,12);
+      ctx.fillStyle='#3a1a00'; ctx.fillRect(mgx+1,mgy-7,7,6); // coffee
+      ctx.strokeStyle='#2a1a40'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(mgx+9,mgy-7,3,-0.6,0.6); ctx.stroke(); // handle
+      // steam wisps
+      for (let sw2=0;sw2<2;sw2++) {
+        const sp2=(f*0.8+sw2*18)%28;
+        ctx.globalAlpha=0.4*(1-sp2/28);
+        ctx.strokeStyle='#8899aa'; ctx.lineWidth=0.7;
+        ctx.beginPath(); ctx.moveTo(mgx+2+sw2*4,mgy-12-sp2*0.2);
+        ctx.quadraticCurveTo(mgx+sw2*3,mgy-16-sp2*0.2,mgx+3+sw2*4,mgy-20-sp2*0.2); ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+    }
+    // Sticky note (for odd desks)
+    if (di%2===1) {
+      ctx.save(); ctx.translate(dx+72,dy-44); ctx.rotate(0.06);
+      ctx.fillStyle='#ccaa22'; ctx.fillRect(0,-14,14,14);
+      ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.lineWidth=0.5;
+      for (let sl=0;sl<3;sl++) ctx.strokeRect(1,sl*4-11,12,1);
+      ctx.restore();
+    }
+
+    // ── MAIN SCREEN CONTENT ───────────────────────────────────
+    const sx3=dx+30, sy3=dy-90, sw=40, sh=44;
+    // Title bar
+    ctx.fillStyle='rgba(10,16,40,0.95)';
+    ctx.fillRect(sx3,sy3,sw,9);
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.fillRect(sx3,sy3,sw,1); // title bar highlight
+    // Window control dots
+    ctx.fillStyle='#cc3322'; ctx.beginPath(); ctx.arc(sx3+4,sy3+4.5,2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#cc8800'; ctx.beginPath(); ctx.arc(sx3+10,sy3+4.5,2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#22aa44'; ctx.beginPath(); ctx.arc(sx3+16,sy3+4.5,2,0,Math.PI*2); ctx.fill();
+    // Content area
+    const csx=sx3, csy=sy3+9, csw=sw, csh=sh-9;
+    if (di===0) { // spectral wave
+      ctx.fillStyle='#06000e'; ctx.fillRect(csx,csy,csw,csh);
+      // Grid lines
+      ctx.strokeStyle='rgba(100,40,180,0.2)'; ctx.lineWidth=0.5;
+      for (let gl=0;gl<4;gl++) { ctx.beginPath(); ctx.moveTo(csx,csy+gl*(csh/3)); ctx.lineTo(csx+csw,csy+gl*(csh/3)); ctx.stroke(); }
+      // Two overlapping waves
+      for (let wv=0;wv<2;wv++) {
+        ctx.strokeStyle=wv===0?'#aa44ff':'rgba(60,160,255,0.6)'; ctx.lineWidth=1;
+        ctx.beginPath();
+        for (let gx=0;gx<=csw;gx++) {
+          const gy=csy+csh/2+Math.sin((gx+f*(1.3-wv*0.5))*0.25)*9+Math.cos((gx*0.1+f*(0.3+wv*0.1)))*4;
+          gx===0?ctx.moveTo(csx+gx,gy):ctx.lineTo(csx+gx,gy);
+        }
+        ctx.stroke();
+      }
+      ctx.fillStyle='#aa55ff'; ctx.font='bold 5px Courier New'; ctx.textAlign='left';
+      ctx.fillText('SPECTRAL ANALYSIS',csx+2,csy+7);
+      ctx.fillStyle='rgba(160,80,255,0.5)'; ctx.font='4px Courier New';
+      ctx.fillText(`${(2.4+Math.sin(f*0.03)*0.2).toFixed(2)} THz`,csx+2,csy+csh-3);
+    } else if (di===1) { // temperature chart with axes
+      ctx.fillStyle='#010610'; ctx.fillRect(csx,csy,csw,csh);
+      // Axes
+      ctx.strokeStyle='rgba(60,120,255,0.4)'; ctx.lineWidth=0.6;
+      ctx.beginPath(); ctx.moveTo(csx+5,csy+2); ctx.lineTo(csx+5,csy+csh-4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(csx+5,csy+csh-4); ctx.lineTo(csx+csw-2,csy+csh-4); ctx.stroke();
+      // Bars
+      for (let bi=0;bi<8;bi++) {
+        const bh=3+Math.sin((bi+f*0.12)*0.5)*11+Math.cos((bi*0.7+f*0.05))*4;
+        const bc=bi/8;
+        ctx.fillStyle=`rgba(${Math.floor(20+bc*100)},${Math.floor(80+bc*100)},255,0.85)`;
+        ctx.fillRect(csx+7+bi*4,csy+csh-4-bh,3,bh);
+      }
+      ctx.fillStyle='#4499ff'; ctx.font='bold 5px Courier New'; ctx.textAlign='left';
+      ctx.fillText('TEMP PROFILE °C',csx+2,csy+7);
+      ctx.fillStyle='rgba(100,160,255,0.6)'; ctx.font='4px Courier New';
+      ctx.fillText(`-${(38+Math.sin(f*0.02)*3).toFixed(1)}°C AVG`,csx+2,csy+csh-3);
+    } else if (di===2) { // radar with blips
+      ctx.fillStyle='#000c04'; ctx.fillRect(csx,csy,csw,csh);
+      const rcx=csx+csw/2, rcy=csy+csh/2+2;
+      // Concentric rings
+      for (let rr=1;rr<=4;rr++) {
+        ctx.strokeStyle=`rgba(0,180,60,${0.12+rr*0.04})`; ctx.lineWidth=0.5;
+        ctx.beginPath(); ctx.arc(rcx,rcy,rr*4.5,0,Math.PI*2); ctx.stroke();
+      }
+      // Cross-hairs
+      ctx.strokeStyle='rgba(0,150,50,0.25)'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(rcx-19,rcy); ctx.lineTo(rcx+19,rcy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rcx,rcy-16); ctx.lineTo(rcx,rcy+16); ctx.stroke();
+      // Sweep
+      const sa2=(f*0.07)%(Math.PI*2);
+      const sweepGrd=ctx.createConicalGradient?null:null; // fallback: arc fill
+      ctx.fillStyle='rgba(0,200,60,0.12)';
+      ctx.beginPath(); ctx.moveTo(rcx,rcy); ctx.arc(rcx,rcy,18,sa2-1.0,sa2); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle='rgba(0,255,100,0.8)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(rcx,rcy); ctx.lineTo(rcx+Math.cos(sa2)*18,rcy+Math.sin(sa2)*18); ctx.stroke();
+      // Blips with trails
+      for (const bp of [{bx:5,by:-3,tr:0.9},{bx:-7,by:6,tr:0.7},{bx:11,by:2,tr:0.5},{bx:-3,by:-8,tr:0.8}]) {
+        ctx.fillStyle=`rgba(0,255,80,${bp.tr*(0.5+Math.sin(f*0.1+bp.bx)*0.4)})`;
+        ctx.beginPath(); ctx.arc(rcx+bp.bx,rcy+bp.by,2,0,Math.PI*2); ctx.fill();
+      }
+      ctx.fillStyle='#00cc55'; ctx.font='bold 5px Courier New'; ctx.textAlign='left';
+      ctx.fillText('STORM RADAR',csx+2,csy+7);
+    } else if (di===3) { // terminal with more lines
+      ctx.fillStyle='#000800'; ctx.fillRect(csx,csy,csw,csh);
+      // Scanline effect
+      ctx.fillStyle='rgba(0,0,0,0.08)';
+      for (let sl2=0;sl2<csh;sl2+=2) ctx.fillRect(csx,csy+sl2,csw,1);
+      const codeLines=['> INIT SCAN...','> WIND_T:'+getWindTier(),'> DST:'+Math.floor(maxReach/12)+'m',
+        '> VOID:'+(wind.force<-2.6?'!!YES!!':'NO'),
+        '> PRES:'+Math.abs(wind.force).toFixed(2),
+        '> TEMP:-'+Math.floor(38+Math.sin(f*0.02)*3)+'C',
+        '> STATUS:OK ','> _'];
+      const coff=Math.floor(f*0.025)%codeLines.length;
+      for (let cl=0;cl<Math.floor(csh/7);cl++) {
+        const line=codeLines[(cl+coff)%codeLines.length];
+        const isAlert=line.includes('!!');
+        ctx.fillStyle=isAlert?`rgba(255,80,60,${0.8+Math.sin(f*0.3)*0.2})`:cl===Math.floor(csh/7)-1?'#44ff88':'rgba(0,200,60,0.8)';
+        ctx.font='5px Courier New'; ctx.textAlign='left';
+        ctx.fillText(line,csx+2,csy+8+cl*7);
+      }
+      if (f%40<20) ctx.fillStyle='#44ff88', ctx.fillRect(csx+2,csy+csh-6,4,5);
+    } else if (di===4) { // pressure gauge (bigger)
+      ctx.fillStyle='#040810'; ctx.fillRect(csx,csy,csw,csh);
+      const pcx=csx+csw/2, pcy=csy+csh/2+4;
+      // Outer ring glow
+      const pgrd=ctx.createRadialGradient(pcx,pcy,10,pcx,pcy,16);
+      pgrd.addColorStop(0,'rgba(60,120,255,0.0)');
+      pgrd.addColorStop(1,'rgba(60,120,255,0.08)');
+      ctx.fillStyle=pgrd; ctx.beginPath(); ctx.arc(pcx,pcy,16,0,Math.PI*2); ctx.fill();
+      // Gauge rings
+      ctx.strokeStyle='rgba(80,140,255,0.35)'; ctx.lineWidth=0.7;
+      ctx.beginPath(); ctx.arc(pcx,pcy,15,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle='rgba(80,140,255,0.15)'; ctx.lineWidth=0.4;
+      ctx.beginPath(); ctx.arc(pcx,pcy,10,0,Math.PI*2); ctx.stroke();
+      // Tick marks
+      for (let gti=0;gti<=10;gti++) {
+        const ga=Math.PI*0.75+gti*(Math.PI*1.5/10);
+        const inner=gti%5===0?11:12.5;
+        ctx.strokeStyle=gti%5===0?'rgba(120,180,255,0.6)':'rgba(80,120,200,0.4)';
+        ctx.lineWidth=gti%5===0?0.8:0.5;
+        ctx.beginPath(); ctx.moveTo(pcx+Math.cos(ga)*inner,pcy+Math.sin(ga)*inner);
+        ctx.lineTo(pcx+Math.cos(ga)*15,pcy+Math.sin(ga)*15); ctx.stroke();
+      }
+      // Danger zone arc
+      ctx.strokeStyle='rgba(255,60,40,0.4)'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.arc(pcx,pcy,13,Math.PI*1.8,Math.PI*2.25); ctx.stroke();
+      // Needle
+      const nA=Math.PI*0.75+(Math.min(Math.abs(wind.force),4)/4)*Math.PI*1.5;
+      ctx.strokeStyle='#ff6644'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(pcx,pcy); ctx.lineTo(pcx+Math.cos(nA)*12,pcy+Math.sin(nA)*12); ctx.stroke();
+      ctx.fillStyle='#ff8866'; ctx.beginPath(); ctx.arc(pcx,pcy,2.5,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#4488cc'; ctx.font='bold 5px Courier New'; ctx.textAlign='left';
+      ctx.fillText('ATMO PRESSURE',csx+2,csy+7);
+      ctx.fillStyle='rgba(100,160,220,0.7)'; ctx.font='4px Courier New';
+      ctx.fillText(Math.abs(wind.force).toFixed(3)+' u/s',csx+2,csy+csh-3);
+    } else if (di===5) { // energy histogram
+      ctx.fillStyle='#060410'; ctx.fillRect(csx,csy,csw,csh);
+      // Grid
+      ctx.strokeStyle='rgba(120,60,200,0.15)'; ctx.lineWidth=0.4;
+      for (let gl=1;gl<4;gl++) { ctx.beginPath(); ctx.moveTo(csx,csy+gl*(csh/4)); ctx.lineTo(csx+csw,csy+gl*(csh/4)); ctx.stroke(); }
+      // Bars with gradient
+      for (let ei=0;ei<9;ei++) {
+        const eh=5+Math.abs(Math.sin(f*0.06+ei*0.9))*24;
+        const eg=ctx.createLinearGradient(0,csy+csh-eh,0,csy+csh);
+        eg.addColorStop(0,`rgba(200,${70+ei*18},255,0.9)`);
+        eg.addColorStop(1,`rgba(100,${30+ei*10},180,0.4)`);
+        ctx.fillStyle=eg;
+        ctx.fillRect(csx+2+ei*4,csy+csh-eh,3,eh);
+      }
+      // Peak line
+      ctx.strokeStyle='rgba(255,200,80,0.5)'; ctx.lineWidth=0.7;
+      ctx.beginPath();
+      for (let ei=0;ei<9;ei++) {
+        const eh=5+Math.abs(Math.sin(f*0.06+ei*0.9))*24;
+        ei===0?ctx.moveTo(csx+3+ei*4,csy+csh-eh):ctx.lineTo(csx+3+ei*4,csy+csh-eh);
+      }
+      ctx.stroke();
+      ctx.fillStyle='#cc88ff'; ctx.font='bold 5px Courier New'; ctx.textAlign='left';
+      ctx.fillText('ENERGY FLUX',csx+2,csy+7);
+    } else if (di===6) { // network topology
+      ctx.fillStyle='#020a08'; ctx.fillRect(csx,csy,csw,csh);
+      const nodes=[{x:20,y:16},{x:6,y:8},{x:34,y:8},{x:6,y:28},{x:34,y:28},{x:20,y:33},{x:13,y:19},{x:28,y:19}];
+      // Connections
+      ctx.strokeStyle='rgba(0,200,180,0.35)'; ctx.lineWidth=0.7;
+      const edges=[[0,1],[0,2],[0,3],[0,4],[0,5],[1,6],[2,7],[6,3],[7,4],[6,7]];
+      for (const [a,b] of edges) {
+        ctx.beginPath(); ctx.moveTo(csx+nodes[a].x,csy+nodes[a].y);
+        ctx.lineTo(csx+nodes[b].x,csy+nodes[b].y); ctx.stroke();
+      }
+      // Packet animation along edges
+      const pkEdge=edges[Math.floor(f*0.1)%edges.length];
+      const pkt=(f*0.08)%1;
+      const pna=nodes[pkEdge[0]], pnb=nodes[pkEdge[1]];
+      ctx.fillStyle='rgba(0,255,220,0.9)';
+      ctx.beginPath(); ctx.arc(csx+pna.x+(pnb.x-pna.x)*pkt,csy+pna.y+(pnb.y-pna.y)*pkt,1.5,0,Math.PI*2); ctx.fill();
+      // Nodes
+      for (let ni=0;ni<nodes.length;ni++) {
+        const nd=nodes[ni];
+        const pulse=0.6+Math.sin(f*0.08+ni)*0.35;
+        ctx.fillStyle=`rgba(0,${Math.floor(180+ni*8)},${Math.floor(160+ni*6)},${pulse})`;
+        ctx.beginPath(); ctx.arc(csx+nd.x,csy+nd.y,ni===0?3.5:2.2,0,Math.PI*2); ctx.fill();
+      }
+      ctx.fillStyle='#00cccc'; ctx.font='bold 5px Courier New'; ctx.textAlign='left';
+      ctx.fillText('NET TOPOLOGY',csx+2,csy+7);
+    } else { // void sensor
+      ctx.fillStyle='#060008'; ctx.fillRect(csx,csy,csw,csh);
+      const vcx=csx+csw/2, vcy=csy+csh/2+2;
+      // Background grid distortion
+      ctx.strokeStyle='rgba(80,0,120,0.2)'; ctx.lineWidth=0.4;
+      for (let vgl=0;vgl<5;vgl++) {
+        const vgy=csy+4+vgl*(csh/5);
+        ctx.beginPath();
+        for (let vgx=0;vgx<=csw;vgx+=4) {
+          const dist=Math.sqrt((vgx-csw/2)**2+(vgy-csy-csh/2)**2);
+          const bend=Math.sin(dist*0.3-f*0.08)*1.5;
+          vgx===0?ctx.moveTo(csx+vgx,vgy+bend):ctx.lineTo(csx+vgx,vgy+bend);
+        }
+        ctx.stroke();
+      }
+      // Expanding rings
+      for (let vr=1;vr<=5;vr++) {
+        const vt=((f*0.7+vr*12)%60)/60;
+        const alpha=(1-vt)*0.7*(wind.force<-2.6?1.4:0.6);
+        ctx.strokeStyle=`rgba(${Math.floor(140+vt*80)},${Math.floor(20+vt*30)},255,${Math.min(alpha,1)})`;
+        ctx.lineWidth=1.2-vt*0.8;
+        ctx.beginPath(); ctx.arc(vcx,vcy,vr*3.5*vt+1,0,Math.PI*2); ctx.stroke();
+      }
+      ctx.fillStyle=`rgba(220,80,255,${0.8+Math.sin(f*0.15)*0.2})`; ctx.beginPath(); ctx.arc(vcx,vcy,2.5,0,Math.PI*2); ctx.fill();
+      const voidAlert=wind.force<-2.6;
+      ctx.fillStyle=voidAlert?`rgba(255,60,60,${0.7+Math.sin(f*0.4)*0.3})`:'#cc44ff';
+      ctx.font='bold 5px Courier New'; ctx.textAlign='left';
+      ctx.fillText(voidAlert?'!! VOID BREACH !!':'VOID SENSOR',csx+2,csy+7);
+      ctx.fillStyle='rgba(180,80,255,0.6)'; ctx.font='4px Courier New';
+      ctx.fillText(`INT:${Math.abs(wind.force).toFixed(2)}`,csx+2,csy+csh-3);
+    }
+
+    // ── SIDE MONITOR CONTENT (mirrored/simplified) ────────────
+    ctx.fillStyle='#04060c'; ctx.fillRect(smsx,smsy,smsw,smsh);
+    // Simple waveform on side monitor
+    ctx.strokeStyle=`rgba(60,200,255,0.7)`; ctx.lineWidth=0.8;
+    ctx.beginPath();
+    for (let gx=0;gx<=smsw;gx++) {
+      const gy=smsy+smsh/2+Math.sin((gx+f*(0.9+di*0.1))*0.4)*5;
+      gx===0?ctx.moveTo(smsx+gx,gy):ctx.lineTo(smsx+gx,gy);
+    }
+    ctx.stroke();
+    // Side monitor label
+    ctx.fillStyle='rgba(60,160,200,0.7)'; ctx.font='4px Courier New'; ctx.textAlign='center';
+    ctx.fillText(['AUX','LOG','CAM','ENV','SYS','ALT','MON','DBG'][di],smsx+smsw/2,smsy+7);
+    ctx.textAlign='left';
+    // Status bar on side monitor
+    ctx.fillStyle=`rgba(0,160,120,${0.4+Math.sin(f*0.04+di)*0.2})`;
+    ctx.fillRect(smsx,smsy+smsh-4,smsw*(0.4+Math.sin(f*0.03+di*0.5)*0.35),3);
 
     // Draw the researcher
     researcher(dx+46, dy, dk.fac, dk.sd, dk.bob, dk.var);
