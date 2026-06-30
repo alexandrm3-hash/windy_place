@@ -273,6 +273,8 @@ let tornado     = null;
 let stamina          = 1;    // 0–1
 let staminaDepleted  = false;
 let staminaCooldown  = 0;    // frames remaining before regen starts
+let craters          = [];
+let craterParticles  = [];
 
 // ── Platform generation ───────────────────────────────────
 function initPlatforms() {
@@ -371,6 +373,8 @@ function init() {
   stamina          = 1;
   staminaDepleted  = false;
   staminaCooldown  = 0;
+  craters          = [];
+  craterParticles  = [];
   initPlatforms();
 }
 
@@ -467,6 +471,22 @@ function updatePlayer() {
       player.y = p.y - player.h;
       player.vy = 0;
       player.onGround = true;
+    }
+  }
+
+  // Crack collapse trigger — land on a crack tile, maybe collapse it
+  if (player.onGround) {
+    const tier = getWindTier();
+    if (tier >= 3) {
+      const CRACK_TILE = 32;
+      const cwx = Math.floor((player.x + player.w * 0.5) / CRACK_TILE) * CRACK_TILE;
+      const hv  = Math.abs(Math.sin(cwx * 0.017 + 1 * 2.718));
+      const sizeRoll = Math.abs(Math.sin(cwx * 0.017 + 1 * 2.718));
+      const alreadyCrater = craters.some(cr => Math.abs(cr.wx - cwx) < 24);
+      const collapseChance = (tier - 2) * 0.022 * (sizeRoll > 0.85 ? 3 : 1);
+      if (!alreadyCrater && Math.random() < collapseChance) {
+        spawnCrater(cwx + CRACK_TILE * 0.5);
+      }
     }
   }
 
@@ -774,6 +794,106 @@ function updateWindDebris() {
   });
 }
 
+// ── Crater system ─────────────────────────────────────────
+function spawnCrater(wx) {
+  const tier = getWindTier();
+  const radius = 40 + tier * 14 + Math.random() * 25;
+  const depth  = 18 + tier * 8  + Math.random() * 12;
+  craters.push({ wx, radius, depth, age: 0, maxAge: 60 });
+
+  // If player is standing over the crater, launch them off the crumbling edge
+  const playerCx = player.x + player.w * 0.5;
+  if (Math.abs(playerCx - wx) < radius) {
+    player.vy = -6;                                      // pop upward
+    player.vx += (playerCx < wx ? -2.5 : 2.5);         // push toward nearest edge
+    player.onGround = false;
+  }
+
+  // Debris particles fly outward
+  const count = 8 + tier * 2;
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 5 + tier;
+    craterParticles.push({
+      x: wx,
+      y: baseGroundY(wx) - 4,
+      vx: Math.cos(angle) * speed,
+      vy: -4 - Math.random() * 5,
+      size: 2 + Math.random() * 4,
+      life: 1,
+      decay: 0.012 + Math.random() * 0.015,
+    });
+  }
+}
+
+function updateCraters() {
+  for (const cr of craters) cr.age++;
+  for (const p of craterParticles) {
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += 0.35;
+    p.life -= p.decay;
+  }
+  craterParticles = craterParticles.filter(p => p.life > 0);
+}
+
+function drawCraters() {
+  for (const cr of craters) {
+    const t   = Math.min(1, cr.age / 60);
+    const sx  = cr.wx - cam.x;
+    const sy  = baseGroundY(cr.wx) - cam.y;
+    const rx  = cr.radius * t;
+    const ry  = (cr.depth * 0.45) * t;
+    if (rx < 2) continue;
+
+    ctx.save();
+    // Dark pit oval
+    const grad = ctx.createRadialGradient(sx, sy + ry * 0.3, 0, sx, sy, rx);
+    grad.addColorStop(0,   'rgba(4,8,14,0.95)');
+    grad.addColorStop(0.6, 'rgba(12,20,30,0.80)');
+    grad.addColorStop(1,   'rgba(20,32,44,0)');
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + ry * 0.2, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Rim highlight arc
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - ry * 0.15, rx * 1.04, ry * 0.35, 0, Math.PI, Math.PI * 2);
+    ctx.strokeStyle = `rgba(160,200,230,${0.35 * t})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Radiating cracks from rim
+    const hh = (n) => Math.abs(Math.sin(cr.wx * 0.019 + n * 2.1));
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + hh(i) * 0.8;
+      const ex = sx + Math.cos(a) * rx * (1.2 + hh(i + 5) * 0.5);
+      const ey = sy + Math.sin(a) * ry * (1.0 + hh(i + 5) * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(a) * rx * 0.8, sy + Math.sin(a) * ry * 0.8);
+      ctx.lineTo(ex, ey);
+      ctx.strokeStyle = `rgba(0,0,0,${0.55 * t})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Debris
+  for (const p of craterParticles) {
+    const sx = p.x - cam.x;
+    const sy = p.y - cam.y;
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.9;
+    ctx.fillStyle = '#2a3a4a';
+    ctx.beginPath();
+    ctx.arc(sx, sy, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 // ── Main update ───────────────────────────────────────────
 function update() {
   frame++;
@@ -794,6 +914,7 @@ function update() {
   updateTornado();
   updateFreezing();
   updateChallenge();
+  updateCraters();
 
   // Wind streak particles (blizzard streaks in strong wind)
   if (Math.abs(wind.force) > 0.20 && Math.random() < Math.abs(wind.force) * 3) {
@@ -1560,8 +1681,20 @@ function drawTerrain() {
 
   // Sample baseGroundY directly at screen pixel intervals — smooth path, no staircase flicker
   const pts = [];
-  for (let sx = -STEP; sx <= W + STEP * 2; sx += STEP)
-    pts.push({ x: sx, y: baseGroundY(cam.x + sx) - cam.y });
+  for (let sx = -STEP; sx <= W + STEP * 2; sx += STEP) {
+    const wx  = cam.x + sx;
+    let   gy  = baseGroundY(wx) - cam.y;
+    // Dip terrain at active craters
+    for (const cr of craters) {
+      const t  = Math.min(1, cr.age / 60);
+      const dx = wx - cr.wx;
+      if (Math.abs(dx) < cr.radius) {
+        const dip = Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
+        gy += dip;
+      }
+    }
+    pts.push({ x: sx, y: gy });
+  }
 
   const screenL  = pts[0].x;   // always -STEP, constant
   const screenR  = pts[pts.length - 1].x;
@@ -1652,14 +1785,18 @@ function drawTerrain() {
 
   // Dense tiling — small tile for lots of cracks
   const CRACK_TILE = 32;
+  const tier = getWindTier();
+  // Tier 0 → ~0.08×, tier 7 → ~1.6×
+  const tierMult = Math.max(0.08, tier * 0.22 + 0.08);
   for (let cwx = Math.floor(wx0 / CRACK_TILE) * CRACK_TILE; cwx < wx0 + segW; cwx += CRACK_TILE) {
     const h = (n) => Math.abs(Math.sin(cwx * 0.017 + n * 2.718));
     if (h(0) < 0.12) continue; // ~12% skip keeps it from being wall-to-wall
 
     const sizeRoll = h(1);
-    const scale = sizeRoll > 0.85 ? 2.8 + h(2) * 3.5   // giant crack
-                : sizeRoll < 0.18 ? 0.18 + h(2) * 0.22  // hairline
-                :                   0.55 + h(2) * 1.1;   // mid
+    const baseScale = sizeRoll > 0.85 ? 2.8 + h(2) * 3.5   // giant crack
+                    : sizeRoll < 0.18 ? 0.18 + h(2) * 0.22  // hairline
+                    :                   0.55 + h(2) * 1.1;   // mid
+    const scale = baseScale * tierMult;
 
     const depth = sizeRoll > 0.85 ? 5
                 : sizeRoll < 0.18 ? 2
@@ -3829,6 +3966,7 @@ function draw() {
   drawGroundDrift();
   drawParticles();
   drawTerrain();
+  drawCraters();
   platforms.filter(p => p.h <= 20).forEach(drawPlatform);
   drawDecorations();
   houses.forEach(drawHouse);
