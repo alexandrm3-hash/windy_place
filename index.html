@@ -1555,130 +1555,161 @@ function drawParticles() {
 
 // ── Draw: Platforms (snowy rock) ──────────────────────────
 function drawTerrain() {
-  const gp = platforms.filter(p => p.h > 20).sort((a, b) => a.x - b.x);
-  if (!gp.length) return;
-
-  // Group into connected runs
-  const segs = [];
-  let cur = [gp[0]];
-  for (let i = 1; i < gp.length; i++) {
-    if (gp[i].x <= gp[i-1].x + gp[i-1].w + 2) cur.push(gp[i]);
-    else { segs.push(cur); cur = [gp[i]]; }
-  }
-  segs.push(cur);
-
   const bot = H + 22;
+  const STEP = 3;
 
-  for (const s of segs) {
-    const screenL = s[0].x - cam.x;
-    const screenR = s[s.length-1].x + s[s.length-1].w - cam.x;
-    if (screenR < -10 || screenL > W + 10) continue;
+  // Sample baseGroundY directly at screen pixel intervals — smooth path, no staircase flicker
+  const pts = [];
+  for (let sx = -STEP; sx <= W + STEP * 2; sx += STEP)
+    pts.push({ x: sx, y: baseGroundY(cam.x + sx) - cam.y });
 
-    // Build slope polyline: top-left of each platform → diagonal to next
-    const pts = s.map(p => ({ x: p.x - cam.x, y: p.y - cam.y }));
-    const last = s[s.length-1];
-    pts.push({ x: last.x + last.w - cam.x, y: last.y - cam.y });
+  const screenL  = pts[0].x;   // always -STEP, constant
+  const screenR  = pts[pts.length - 1].x;
+  const segW     = screenR - screenL;
+  const wx0      = cam.x + screenL;  // world x of left edge
+  // Use terrain height at screen centre for gradient — never chases mountain peaks
+  const midGroundY = baseGroundY(cam.x + W * 0.5) - cam.y;
 
-    const topY = Math.min(...pts.map(p => p.y));
-    const cv = ((s[0].x * 17 + 137) % 7) - 3;
-    const r0 = 26 + cv*2, g0 = 42 + cv, b0 = 54 + cv;
+  // Smooth color variation by world position (no snapping)
+  const cvf = Math.sin(cam.x * 0.0008) * 2.5;
+  const cv  = cvf | 0;
+  const r0 = 26 + cv * 2, g0 = 42 + cv, b0 = 54 + cv;
 
-    ctx.save();
+  ctx.save();
 
-    // Terrain polygon
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, bot);
-    ctx.lineTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.lineTo(pts[pts.length-1].x, bot);
-    ctx.closePath();
+  // ── Rock body ─────────────────────────────────────────────
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, bot);
+  ctx.lineTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.lineTo(pts[pts.length - 1].x, bot);
+  ctx.closePath();
 
-    // Rock body
-    const bg = ctx.createLinearGradient(0, topY, 0, bot);
-    bg.addColorStop(0,    `rgb(${r0},${g0},${b0})`);
-    bg.addColorStop(0.10, `rgb(${r0-8},${g0-10},${b0-6})`);
-    bg.addColorStop(1,    `rgb(${8+cv},${14+cv},${22+cv})`);
-    ctx.fillStyle = bg;
-    ctx.fill();
+  const bg = ctx.createLinearGradient(0, midGroundY, 0, bot);
+  bg.addColorStop(0,    `rgb(${r0},${g0},${b0})`);
+  bg.addColorStop(0.10, `rgb(${r0 - 8},${g0 - 10},${b0 - 6})`);
+  bg.addColorStop(1,    `rgb(${8 + cv},${14 + cv},${22 + cv})`);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.restore();
 
-    // Clip textures to a stable rectangle — avoids flicker from complex polygon clip
-    ctx.restore();
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(screenL, topY + 6, screenR - screenL, bot - topY);
-    ctx.clip();
+  // ── Cracks — dense, highly detailed, world-space stable ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, bot);
+  ctx.lineTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.lineTo(pts[pts.length - 1].x, bot);
+  ctx.closePath();
+  ctx.clip();
+  ctx.lineCap = 'round';
 
-    // Strata
-    const sv = (n) => Math.abs(Math.sin((s[0].x * 7 + s[0].y * 3) * 0.005 + n * 1.618));
-    const nStrata = Math.min(4, Math.floor((bot - topY) / 28));
-    const segW = screenR - screenL;
-    for (let st = 0; st < nStrata; st++) {
-      const stY = topY + 20 + sv(st*3) * (bot - topY - 30);
-      ctx.strokeStyle = `rgba(0,0,0,${0.08 + sv(st*3+1)*0.09})`; ctx.lineWidth = 1 + sv(st*3+2);
-      ctx.beginPath(); ctx.moveTo(screenL, stY);
-      for (let bx = 0; bx <= segW; bx += 12) ctx.lineTo(screenL + bx, stY + Math.sin((s[0].x + bx) * 0.09 + st) * 2.5);
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(100,160,200,0.07)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(screenL, stY - 1);
-      for (let bx = 0; bx <= segW; bx += 12) ctx.lineTo(screenL + bx, stY - 1 + Math.sin((s[0].x + bx) * 0.09 + st) * 2.5);
-      ctx.stroke();
+  // Draws one crack recursively: origin (ox,oy), direction angle, remaining depth, scale
+  function drawCrack(ox, oy, angle, depth, scale, alpha, seed) {
+    if (depth <= 0 || scale < 0.08) return;
+    const hh = (n) => Math.abs(Math.sin(seed * 0.031 + n * 1.618 + depth * 0.9));
+    const len = (12 + hh(1) * 22) * scale;
+    const wobble = (hh(2) - 0.5) * 0.55; // slight direction drift
+    const ex = ox + Math.cos(angle + wobble) * len;
+    const ey = oy + Math.sin(angle + wobble) * len;
+
+    // Draw segmented line with micro-jitter for rough rock feel
+    const segs = 3 + Math.floor(hh(3) * 3);
+    ctx.strokeStyle = `rgba(0,0,0,${alpha})`;
+    ctx.lineWidth = Math.max(0.3, scale * 1.1);
+    ctx.beginPath(); ctx.moveTo(ox, oy);
+    for (let s = 1; s <= segs; s++) {
+      const t = s / segs;
+      const jx = ox + (ex - ox) * t + (hh(s * 3 + 4) - 0.5) * 4 * scale;
+      const jy = oy + (ey - oy) * t + (hh(s * 3 + 5) - 0.5) * 4 * scale;
+      ctx.lineTo(jx, jy);
     }
+    ctx.stroke();
 
-    // Cracks
-    const crR = (n) => Math.abs(Math.sin((s[0].x * 13 + s[0].y * 7) * 0.008 + n * 2.399));
-    const nc = Math.min(12, Math.floor(segW / 28) + 2);
-    ctx.lineCap = 'round';
-    for (let c = 0; c < nc; c++) {
-      ctx.strokeStyle = `rgba(0,0,0,${0.12 + crR(c*9+8)*0.12})`; ctx.lineWidth = 0.7;
-      const cx = screenL + crR(c*9+1) * segW, cy = topY + 8 + crR(c*9+2) * Math.min(bot - topY - 12, 90);
-      const cx2 = cx + crR(c*9+3)*24-12,      cy2 = cy + crR(c*9+4)*11-2;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx2, cy2); ctx.stroke();
-      if (crR(c*9+5) > 0.30) {
-        ctx.beginPath(); ctx.moveTo(cx2, cy2);
-        ctx.lineTo(cx2 + crR(c*9+6)*15-7.5, cy2 + crR(c*9+7)*8); ctx.stroke();
+    // Highlight crack edge (bright side)
+    ctx.strokeStyle = `rgba(140,180,210,${alpha * 0.25})`;
+    ctx.lineWidth = Math.max(0.2, scale * 0.5);
+    ctx.beginPath(); ctx.moveTo(ox + 0.8, oy - 0.8); ctx.lineTo(ex + 0.8, ey - 0.8); ctx.stroke();
+
+    // Recurse — continue main crack
+    drawCrack(ex, ey, angle + wobble, depth - 1, scale * (0.72 + hh(6) * 0.18), alpha * 0.88, seed + depth * 7.3);
+
+    // Branch 1 — always splits at some point
+    if (depth >= 2) {
+      const branchAngle = angle + (hh(7) > 0.5 ? 1 : -1) * (0.4 + hh(8) * 0.6);
+      drawCrack(ox + (ex - ox) * (0.3 + hh(9) * 0.5),
+                oy + (ey - oy) * (0.3 + hh(9) * 0.5),
+                branchAngle, depth - 2, scale * (0.45 + hh(10) * 0.25), alpha * 0.65, seed + 31.1);
+    }
+    // Branch 2 — occasional extra fork
+    if (depth >= 3 && hh(11) > 0.55) {
+      const branchAngle2 = angle + (hh(12) > 0.5 ? -1 : 1) * (0.3 + hh(13) * 0.5);
+      drawCrack(ox + (ex - ox) * (0.5 + hh(14) * 0.4),
+                oy + (ey - oy) * (0.5 + hh(14) * 0.4),
+                branchAngle2, depth - 3, scale * (0.30 + hh(15) * 0.20), alpha * 0.50, seed + 53.7);
+    }
+  }
+
+  // Dense tiling — small tile for lots of cracks
+  const CRACK_TILE = 32;
+  for (let cwx = Math.floor(wx0 / CRACK_TILE) * CRACK_TILE; cwx < wx0 + segW; cwx += CRACK_TILE) {
+    const h = (n) => Math.abs(Math.sin(cwx * 0.017 + n * 2.718));
+    if (h(0) < 0.12) continue; // ~12% skip keeps it from being wall-to-wall
+
+    const sizeRoll = h(1);
+    const scale = sizeRoll > 0.85 ? 2.8 + h(2) * 3.5   // giant crack
+                : sizeRoll < 0.18 ? 0.18 + h(2) * 0.22  // hairline
+                :                   0.55 + h(2) * 1.1;   // mid
+
+    const depth = sizeRoll > 0.85 ? 5
+                : sizeRoll < 0.18 ? 2
+                :                   3 + Math.floor(h(3) * 2);
+
+    const ox = cwx - cam.x + (h(4) - 0.5) * CRACK_TILE * 0.8;
+    const oy = baseGroundY(cwx) - cam.y + 5 + h(5) * 70 * scale;
+    const angle = (h(6) - 0.5) * Math.PI * 0.8 + Math.PI * 0.5; // mostly downward
+    const alpha = 0.22 + h(7) * 0.30;
+
+    drawCrack(ox, oy, angle, depth, scale, alpha, cwx);
+
+    // Extra micro-cracks radiating from large cracks
+    if (sizeRoll > 0.70) {
+      for (let mc = 0; mc < 3; mc++) {
+        const mh = (n) => Math.abs(Math.sin(cwx * 0.023 + mc * 5.1 + n * 1.9));
+        drawCrack(
+          ox + (mh(1) - 0.5) * 30 * scale,
+          oy + (mh(2) - 0.5) * 20 * scale,
+          angle + (mh(3) - 0.5) * Math.PI,
+          2, scale * (0.20 + mh(4) * 0.25), alpha * 0.55, cwx + mc * 17.3
+        );
       }
     }
-
-    // Pebbles
-    const pr = (n) => Math.abs(Math.sin((s[0].x * 19 + s[0].y * 11) * 0.009 + n * 1.732));
-    const np = Math.min(18, Math.floor(segW / 22));
-    for (let i = 0; i < np; i++) {
-      const px = screenL + 4 + pr(i*5) * (segW - 8), py = topY + 14 + pr(i*5+1) * Math.min(bot - topY - 18, 80);
-      const prad = 1.2 + pr(i*5+2)*2.8;
-      ctx.fillStyle = `rgba(${pr(i*5+3) > 0.5 ? 55 : 12},${pr(i*5+3) > 0.5 ? 85 : 22},${pr(i*5+3) > 0.5 ? 105 : 32},0.30)`;
-      ctx.beginPath(); ctx.ellipse(px, py, prad, prad*(0.55+pr(i*5+4)*0.5), pr(i*5+4)*Math.PI, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = 'rgba(140,200,240,0.13)'; ctx.lineWidth = 0.5; ctx.stroke();
-    }
-
-    ctx.restore();
-
-    // Snow cap stroked along slope
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.strokeStyle = '#d8eef8'; ctx.lineWidth = 5; ctx.stroke();
-
-    // Snow depth fade below cap
-    const sfg = ctx.createLinearGradient(0, topY, 0, topY + 18);
-    sfg.addColorStop(0, 'rgba(210,235,250,0.50)'); sfg.addColorStop(1, 'rgba(210,235,250,0)');
-    ctx.strokeStyle = sfg; ctx.lineWidth = 14; ctx.stroke();
-
-    // Snow sparkles
-    const sr = (n) => Math.abs(Math.sin((s[0].x * 31 + s[0].y * 5) * 0.011 + n * 2.718));
-    const ns = Math.min(8, Math.floor(segW / 35));
-    ctx.fillStyle = 'rgba(255,255,255,0.90)';
-    for (let i = 0; i < ns; i++) {
-      const sx2 = screenL + 4 + sr(i*3) * (segW - 8);
-      const t = (sx2 - pts[0].x) / Math.max(1, pts[pts.length-1].x - pts[0].x);
-      const idx = Math.min(pts.length-2, Math.floor(t * (pts.length-1)));
-      const lt = (sx2 - pts[idx].x) / Math.max(1, pts[idx+1].x - pts[idx].x);
-      const sy2 = pts[idx].y + (pts[idx+1].y - pts[idx].y) * lt - sr(i*3+1)*3;
-      ctx.beginPath(); ctx.arc(sx2, sy2, 0.5 + sr(i*3+2)*0.9, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
   }
+  ctx.restore();
+
+  // ── Snow cap ──────────────────────────────────────────────
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = '#d8eef8'; ctx.lineWidth = 5; ctx.stroke();
+
+  const sfg = ctx.createLinearGradient(0, midGroundY, 0, midGroundY + 18);
+  sfg.addColorStop(0, 'rgba(210,235,250,0.50)'); sfg.addColorStop(1, 'rgba(210,235,250,0)');
+  ctx.strokeStyle = sfg; ctx.lineWidth = 14; ctx.stroke();
+
+  // Sparkles — tiled in world space
+  ctx.fillStyle = 'rgba(255,255,255,0.90)';
+  const SPARK_TILE = 35;
+  for (let swx = Math.floor(wx0 / SPARK_TILE) * SPARK_TILE; swx < wx0 + segW; swx += SPARK_TILE) {
+    const sr  = (n) => Math.abs(Math.sin(swx * 0.031 + n * 2.718));
+    const sx2 = swx - cam.x + sr(1) * SPARK_TILE;
+    if (sx2 < screenL || sx2 > screenR) continue;
+    const sy2 = baseGroundY(swx + sr(1) * SPARK_TILE) - cam.y - sr(2) * 3;
+    ctx.beginPath(); ctx.arc(sx2, sy2, 0.5 + sr(3) * 0.9, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawSnowman(x, y, angle) {
