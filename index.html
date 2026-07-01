@@ -3465,12 +3465,6 @@ function drawResearchInterior() {
     ctx.beginPath(); ctx.arc(hx,hy,3,0,Math.PI*2); ctx.stroke();
 
     // Accessories
-    if (type===0) {  // glasses
-      ctx.strokeStyle='#888'; ctx.lineWidth=0.8;
-      ctx.beginPath(); ctx.arc(hx-2.5,hy-0.5,2,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(hx+2.5,hy-0.5,2,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(hx-2.5+1.5,hy-0.5); ctx.lineTo(hx+2.5-1.5,hy-0.5); ctx.stroke();
-    }
     if (type===1) {  // beanie
       ctx.fillStyle='#3355aa';
       ctx.beginPath(); ctx.arc(hx,hy-1,5,Math.PI,0); ctx.closePath(); ctx.fill();
@@ -3506,16 +3500,20 @@ function drawResearchInterior() {
 
     ctx.restore();
 
-    // Phone ring icon (global coords)
+    // Phone ring icon (global coords) — rotates side to side to simulate vibration
     if (act==='ring') {
-      const rb=Math.sin(sT*2.0)*2.5;
-      const rix=rx+22, riy=ry-60+rb;
-      ctx.fillStyle=`rgba(30,195,75,${0.78+Math.sin(sT*2.0)*0.18})`;
-      ctx.fillRect(rix-6,riy-7,12,14);
+      const rix=rx+22, riy=ry-60;
+      const angle=Math.sin(sT*2.8)*0.35;
+      ctx.save();
+      ctx.translate(rix, riy);
+      ctx.rotate(angle);
+      ctx.fillStyle=`rgba(30,195,75,${0.78+Math.sin(sT*2.8)*0.18})`;
+      ctx.fillRect(-6,-7,12,14);
       ctx.strokeStyle='#fff'; ctx.lineWidth=1.2;
-      ctx.beginPath(); ctx.moveTo(rix-3,riy+3); ctx.quadraticCurveTo(rix-3,riy-4,rix,riy-5); ctx.quadraticCurveTo(rix+3,riy-4,rix+3,riy+3); ctx.stroke();
-      ctx.strokeStyle=`rgba(40,200,80,${0.40+Math.sin(sT*2.0)*0.28})`; ctx.lineWidth=1;
-      for(let ra=1;ra<=2;ra++){ctx.beginPath();ctx.arc(rix,riy,7+ra*6,-0.75,0.75);ctx.stroke();}
+      ctx.beginPath(); ctx.moveTo(-3,3); ctx.quadraticCurveTo(-3,-4,0,-5); ctx.quadraticCurveTo(3,-4,3,3); ctx.stroke();
+      ctx.strokeStyle=`rgba(40,200,80,${0.40+Math.sin(sT*2.8)*0.28})`; ctx.lineWidth=1;
+      for(let ra=1;ra<=2;ra++){ctx.beginPath();ctx.arc(0,0,7+ra*6,-0.75,0.75);ctx.stroke();}
+      ctx.restore();
     }
   }
 
@@ -4022,7 +4020,7 @@ function drawResearchInterior() {
     {x:440,y:deskY, fac:-1, sd:1,  bob:1.6, var:0, row:'back'},
     {x:530,y:deskY, fac: 1, sd:-1, bob:3.0, var:1, row:'back'},
     {x:618,y:deskY, fac:-1, sd:1,  bob:0.4, var:2, row:'back'},
-    {x:710,y:deskY, fac: 1, sd:-1, bob:2.2, var:3, row:'back'},
+    {x:640,y:deskY, fac: 1, sd:-1, bob:2.2, var:3, row:'back'},
   ];
 
   for (const dk of desks) {
@@ -4593,7 +4591,7 @@ function drawResearchInterior() {
   }
 
   // ── NOTICE BOARD on back wall ─────────────────────────────
-  const nbX=680, nbY=62, nbW=100, nbH=80;
+  const nbX=752, nbY=62, nbW=100, nbH=80;
   ctx.fillStyle='#4a3010'; ctx.fillRect(nbX-4,nbY-4,nbW+8,nbH+8);
   ctx.fillStyle='#d4b47c'; ctx.fillRect(nbX,nbY,nbW,nbH);
   ctx.strokeStyle='#6a4820'; ctx.lineWidth=1.5; ctx.strokeRect(nbX,nbY,nbW,nbH);
@@ -4670,7 +4668,7 @@ function drawResearchInterior() {
 
   // ── SPECIMEN SHELF UNIT (back-left wall, beside server rack) ──
   {
-    const shX = 94, shY = floorY - 252, shW = 50, shH = 112;
+    const shX = 50, shY = floorY - 252, shW = 50, shH = 112;
     ctx.fillStyle = '#0c0f1a'; ctx.fillRect(shX, shY, shW, shH);
     ctx.strokeStyle = '#181e2c'; ctx.lineWidth = 1; ctx.strokeRect(shX, shY, shW, shH);
     // Header
@@ -4708,7 +4706,7 @@ function drawResearchInterior() {
 
   // ── SCIENTIFIC EQUIPMENT TABLE (right-side floor gap) ─────────
   {
-    const etX = IW - 162, etY = floorY;
+    const etX = IW - 100, etY = floorY;
     // Table surface
     ctx.fillStyle = '#131620'; ctx.fillRect(etX, etY - 48, 72, 8);
     ctx.fillStyle = '#1e2234'; ctx.fillRect(etX, etY - 48, 72, 2);
