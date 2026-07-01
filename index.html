@@ -206,7 +206,7 @@ const WIND_STATES = [
   { tgt: -2.00, label:'HYPERCANE',        lvl:6, dMin:220, dMax:380 },  // [7]
   { tgt:  0.65, label:'STRONG TAILWIND',  lvl:3, dMin: 80, dMax:150 },  // [8]
   { tgt:  1.40, label:'TAILWIND TORNADO', lvl:5, dMin: 70, dMax:110 },  // [9]
-  { tgt: -4.20, label:'VOID STORM',       lvl:7, dMin:300, dMax:520 },  // [10] — secret tier 7
+  { tgt: -4.20, label:'VOID STORM',       lvl:7, dMin:420, dMax:660 },  // [10] — secret tier 7
 ];
 
 function getWindTier() {
@@ -334,6 +334,8 @@ function toggleAnimPicker() {
 let researchPanic = []; // per-worker panic state for void storm running animation
 let researchFloor = 0;  // 0 = ground level, 1 = upper balcony
 let _ladderCooldown = 0;
+let postVoidCalm = 0;   // frames of forced calm remaining after void storm ends
+let voidWarningTimer = 0; // counts up while void is incoming but not yet active
 let secretTierTimer = 0;   // frames to show the secret tier unlock message
 let terrainDrama = 0;      // 0–1+ smoothly tracks tier; controls slope steepness
 let windDebris = [];
@@ -514,12 +516,42 @@ const doJump  = () => keys['ArrowUp']    || keys['KeyW'] || keys['Space'];
 
 // ── Wind update ───────────────────────────────────────────
 function updateWind() {
+  const wasVoid = wind.force < -2.60;
+
+  if (postVoidCalm > 0) {
+    // 20-second forced calm after void storm — no wind at all
+    postVoidCalm--;
+    wind.target = 0;
+    wind.timer  = 0; // keep timer reset so it doesn't immediately re-roll
+    wind.force  += (wind.target - wind.force) * 0.045; // recover a bit faster
+    wind.strength = Math.min(1, Math.abs(wind.force) / 0.90);
+    return;
+  }
+
   if (++wind.timer >= wind.duration) {
     wind.timer = 0;
-    const ws      = pickWindState();
-    wind.target   = ws.tgt + (Math.random() - 0.5) * 0.05;
-    wind.duration = ws.dMin + Math.floor(Math.random() * (ws.dMax - ws.dMin));
+    const ws = pickWindState();
+    // If we just exited void storm, switch to calm and start the calm timer
+    if (wasVoid && ws === WIND_STATES[10]) {
+      // Void storm re-rolled itself — force a calm exit instead
+      wind.target   = 0;
+      wind.duration = 60; // short bridge before calm kicks in
+      postVoidCalm  = 20 * 60; // 20 seconds × 60 fps
+    } else if (wasVoid && ws !== WIND_STATES[10]) {
+      // Natural transition out of void — also trigger calm
+      wind.target   = 0;
+      wind.duration = ws.dMin;
+      postVoidCalm  = 20 * 60;
+    } else {
+      wind.target   = ws.tgt + (Math.random() - 0.5) * 0.05;
+      wind.duration = ws.dMin + Math.floor(Math.random() * (ws.dMax - ws.dMin));
+      // Trigger warning if void storm just got picked
+      if (ws === WIND_STATES[10]) voidWarningTimer = 1;
+    }
   }
+  // Advance warning timer while void is incoming but not yet fully active
+  if (voidWarningTimer > 0 && wind.force > -2.60) voidWarningTimer++;
+  else if (wind.force <= -2.60) voidWarningTimer = 0; // storm arrived, kill warning
   wind.force    += (wind.target - wind.force) * 0.022;
   wind.strength  = Math.min(1, Math.abs(wind.force) / 0.90);
 }
@@ -5513,6 +5545,31 @@ function drawResearchInterior() {
     }
 
     ctx.globalAlpha = 1;
+  }
+
+  // ── VOID INCOMING WARNING ─────────────────────────────────
+  if (voidWarningTimer > 30 && !isVoidNow) {
+    // Pulse once every ~90 frames; fade in over first 60 frames
+    const fadeIn  = Math.min(1, (voidWarningTimer - 30) / 60);
+    const pulse   = 0.55 + Math.sin(frame * 0.15) * 0.45;
+    const alpha   = fadeIn * pulse;
+    // Creeping dark vignette
+    const vg = ctx.createRadialGradient(W/2, H/2, H*0.2, W/2, H/2, W*0.72);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, `rgba(20,0,40,${alpha * 0.55})`);
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    // Warning text — flickers with the pulse
+    if (pulse > 0.25) {
+      ctx.save();
+      ctx.font = `bold ${Math.round(13 + Math.sin(frame * 0.18) * 1.5)}px 'Courier New'`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(180, 40, 255, ${alpha * pulse * 0.9})`;
+      ctx.fillText('T H E   V O I D   C O M E S   A F T E R   Y O U', W/2, H/2 - 4);
+      // subtle second shadow pass
+      ctx.fillStyle = `rgba(255, 80, 80, ${alpha * pulse * 0.25})`;
+      ctx.fillText('T H E   V O I D   C O M E S   A F T E R   Y O U', W/2 + 1, H/2 - 3);
+      ctx.restore();
+    }
   }
 
   // ── VOID STORM ALERT OVERLAY ──────────────────────────────
