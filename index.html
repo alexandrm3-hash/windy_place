@@ -3323,7 +3323,11 @@ function drawResearchInterior() {
     // ── Draw with local coordinates: origin = (rx, ry), y<0 = upward ──
     // All researchers face LEFT (toward keyboard at local x≈-13).
     // fac only affects chair-back side (cosmetic), not body direction.
-    const sc = '#c8d8ec';
+    const RESEARCHER_COLORS = ['#e87060','#60c8e8','#70e898','#e8c840','#c078e8','#e8884a','#60e8d0','#e860a8','#f0f060','#80e860','#e860d0','#40d0f8','#f8a030','#a0f040','#f06090','#50f0c0','#d0a0f8','#f8d060','#60a8f8','#f87840'];
+    const SCARF_COLORS = ['#ff4444','#ff9900','#ffdd00','#44dd44','#4499ff','#cc44ff','#ff44aa','#44ffee','#ff6622','#aaffaa','#ffaaff','#22ccff'];
+    const hasScarf = (deskIndex * 7 + variant * 3) % 3 !== 0; // ~2/3 of researchers have a scarf
+    const scarfColor = SCARF_COLORS[(deskIndex * 5 + variant * 11) % SCARF_COLORS.length];
+    const sc = RESEARCHER_COLORS[deskIndex % RESEARCHER_COLORS.length];
     ctx.save();
     ctx.translate(rx, ry + 7);
     ctx.strokeStyle = sc; ctx.fillStyle = sc;
@@ -3455,6 +3459,37 @@ function drawResearchInterior() {
     const hx = shX+headTiltX, hy = shY-9+headDroop;
     ctx.strokeStyle=sc; ctx.lineWidth=1.8;
     ctx.beginPath(); ctx.moveTo(shX,shY); ctx.lineTo(hx,hy+5); ctx.stroke(); // neck
+
+    // ── SCARF ──────────────────────────────────────────────
+    if (hasScarf) {
+      const neckMidX = (shX+hx)*0.5, neckMidY = (shY + hy+5)*0.5;
+      ctx.fillStyle = scarfColor;
+      // Main wrap: small filled ellipse around neck
+      ctx.beginPath();
+      ctx.ellipse(neckMidX, neckMidY, 4.5, 2.5, -0.3, 0, Math.PI*2);
+      ctx.fill();
+      // Left tail hanging down-left
+      ctx.beginPath();
+      ctx.moveTo(neckMidX-2, neckMidY+1);
+      ctx.lineTo(neckMidX-5, neckMidY+7);
+      ctx.lineTo(neckMidX-2, neckMidY+8);
+      ctx.lineTo(neckMidX+1, neckMidY+3);
+      ctx.closePath(); ctx.fill();
+      // Right tail (shorter, tucked)
+      ctx.fillStyle = scarfColor + 'cc';
+      ctx.beginPath();
+      ctx.moveTo(neckMidX+1, neckMidY+1);
+      ctx.lineTo(neckMidX+4, neckMidY+5);
+      ctx.lineTo(neckMidX+2, neckMidY+6);
+      ctx.lineTo(neckMidX-1, neckMidY+2);
+      ctx.closePath(); ctx.fill();
+      // Highlight stripe on wrap
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.ellipse(neckMidX-0.5, neckMidY-0.5, 3, 1.5, -0.3, Math.PI*1.1, Math.PI*1.9);
+      ctx.stroke();
+      ctx.strokeStyle = sc;
+    }
     ctx.fillStyle=sc;
     ctx.beginPath();
     ctx.arc(hx,hy,5,0,Math.PI*2,false);
