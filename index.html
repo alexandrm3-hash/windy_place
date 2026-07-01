@@ -3320,212 +3320,202 @@ function drawResearchInterior() {
       act = cyc<560?'type':cyc<692?'read':'type';
     }
 
-    // Pose parameters
-    // ── Exact Y levels from desk geometry (ry = floor) ──────
-    // Chair seat top: ry-28  Desk panel: ry-44 to ry-32
-    const KBD  = ry - 44;  // keyboard / desk surface
-    const SHIP = ry - 50;  // shoulder (just above desk panel)
-    const HIPY = ry - 28;  // hip on seat
-    const HEADY = ry - 60; // head centre
+    // ── Draw with local coordinates: origin = (rx, ry), y<0 = upward ──
+    // All researchers face LEFT (toward keyboard at local x≈-13).
+    // fac only affects chair-back side (cosmetic), not body direction.
+    const sc = '#c8d8ec';
+    ctx.save();
+    ctx.translate(rx, ry + 7);
+    ctx.strokeStyle = sc; ctx.fillStyle = sc;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-    // Per-activity hand target positions (absolute screen coords)
-    // lhx/lhy = left hand,  rhx/rhy = right hand
-    let lhx = rx + sd*12 - 3, lhy = KBD;
-    let rhx = rx + sd*12 + 3, rhy = KBD;
-    let headLean = sd * 3;   // head X lean toward screen
-    let headDroop = 0;       // head Y extra droop (sleep)
-    let mouth=0, showPhone=false, showPad=false;
+    // Local Y landmarks (negative = above floor):
+    //   floor = 0,  foot = -5,  knee = -28,  hip = -28,
+    //   kbd surface = -34,  shoulder = -52,  head = -64
+    // Thighs are HORIZONTAL (knee at same Y as hip = seated pose).
+    // Keyboard is at local x≈-13 (always to the left for a left-facing pose).
+
+    const HIP = -22 + bob;   // hip Y (on chair seat)
+    const SHO = -40 + bob;   // shoulder Y
+    const KBDY = -28;         // keyboard surface Y
+    const KBDX = -12;         // keyboard centre X (global: rx-12 ≈ dx+34, on keyboard)
+
+    // Pose-specific overrides
+    let lhx = KBDX-3, lhy = KBDY;  // left hand
+    let rhx = KBDX+3, rhy = KBDY;  // right hand
+    let headTiltX = -3;             // head leans left (toward screen on left)
+    let headDroop = 0;              // extra Y for sleep
+    let mouth = 0, showPhone = false, showPad = false;
 
     if (act==='type') {
-      // Alternating finger lift: 0 (resting on key) to -3 (lifted)
-      lhy = KBD - Math.max(0, Math.sin(sT*0.42))   * 3;
-      rhy = KBD - Math.max(0, Math.sin(sT*0.42+Math.PI)) * 3;
-      // Occasional head nod to re-read screen
-      if ((sT%180)<16) headLean += sd*2;
+      lhy = KBDY - Math.max(0, Math.sin(sT*0.42))   * 3;
+      rhy = KBDY - Math.max(0, Math.sin(sT*0.42+Math.PI)) * 3;
+      if ((sT%180)<16) headTiltX -= 2;  // glance at screen
     } else if (act==='read') {
-      lhx=rx+sd*8-3; rhx=rx+sd*16+3;
-      rhy = KBD - Math.abs(Math.sin(sT*0.10)) * 2; // mouse scroll
-      headLean = sd*1;
+      lhx=KBDX-5; rhx=KBDX+5;
+      rhy = KBDY - Math.abs(Math.sin(sT*0.10))*2;
+      headTiltX = -2;
     } else if (act==='ring') {
-      headLean = sd*1 + Math.sin(sT*0.38)*3; // startled look-up
+      headTiltX = -2 + Math.sin(sT*0.38)*3;
     } else if (act==='talk') {
-      // Right arm raises to ear
-      rhx = rx + sd*2; rhy = SHIP - 8 + Math.sin(sT*0.19)*1.5;
-      lhx = rx + sd*10; lhy = KBD + Math.sin(sT*0.19)*1.5; // jotting
-      headLean = sd*5; // tilt head to shoulder holding phone
-      mouth=Math.max(0,Math.sin(sT*0.33)); showPhone=true;
+      rhx=-6; rhy=SHO-6+Math.sin(sT*0.19)*1.5;  // right hand up to ear
+      lhx=KBDX; lhy=KBDY+Math.sin(sT*0.19)*1.5;
+      headTiltX=-6; mouth=Math.max(0,Math.sin(sT*0.33)); showPhone=true;
     } else if (act==='hangup') {
       const ht=Math.min(1,Math.max(0,(cyc-490)/58));
-      // Right arm lowers from ear back to keyboard
-      rhx = rx + sd*2 + (rx + sd*12 + 3 - (rx+sd*2))*ht;
-      rhy = (SHIP-8) + (KBD - (SHIP-8))*ht;
-      lhx = rx + sd*10; lhy = KBD;
-      headLean = sd*5*(1-ht) + sd*3*ht;
-      showPhone = ht < 0.65;
+      rhx=-6+(KBDX+3-(-6))*ht; rhy=(SHO-6)+(KBDY-(SHO-6))*ht;
+      lhx=KBDX; lhy=KBDY;
+      headTiltX=-6*(1-ht)-3*ht; showPhone=ht<0.65;
     } else if (act==='stretch') {
-      const sw=Math.sin(Math.max(0,(cyc-480))/114*Math.PI); // 0→1→0
-      lhx = rx - 18*sw; lhy = SHIP - 18*sw; // arms raise and spread
-      rhx = rx + 18*sw; rhy = SHIP - 18*sw;
-      headLean = 0; headDroop = -4*sw; // head tips back during stretch
+      const sw=Math.sin(Math.max(0,(cyc-480))/114*Math.PI);
+      lhx=-10*sw; lhy=SHO-8*sw;
+      rhx=10*sw;  rhy=SHO-8*sw;
+      headTiltX=0; headDroop=-2*sw;
     } else if (act==='write') {
-      lhx=rx+sd*8-4; lhy=KBD;
-      rhx=rx+sd*14+4; rhy=KBD - Math.abs(Math.sin(sT*0.23))*3; // pen moving
-      headLean=sd*4; headDroop=6; // looking down at notepad
-      showPad=true;
+      lhx=KBDX-4; lhy=KBDY;
+      rhx=KBDX+6; rhy=KBDY-Math.abs(Math.sin(sT*0.23))*3;
+      headTiltX=-4; headDroop=5; showPad=true;
     } else if (act==='nodoff') {
-      const nd=Math.min(1,(sT%15000-7000)/240); // 0→1 as they nod off
-      lhx=rx+sd*12-3; lhy=KBD+(nd*4);   // arms slowly relax onto desk
-      rhx=rx+sd*12+3; rhy=KBD+(nd*4);
-      headDroop=nd*16; headLean=sd*(3-nd*3); // head droops forward
+      const nd=Math.min(1,Math.max(0,(sT%15000-7000)/240));
+      lhx=KBDX-3; lhy=KBDY+nd*3;
+      rhx=KBDX+3; rhy=KBDY+nd*3;
+      headDroop=nd*12; headTiltX=-3*(1-nd);
     } else if (act==='sleep') {
-      lhx=rx+sd*14-5; lhy=KBD+3; // arms flat on desk
-      rhx=rx+sd*14+5; rhy=KBD+3;
-      headDroop=16; headLean=sd*1; // head resting on desk
+      lhx=KBDX-5; lhy=KBDY+3; rhx=KBDX+5; rhy=KBDY+3;
+      headDroop=12; headTiltX=0;
     } else if (act==='wakeup') {
-      const wu=Math.min(1,(sT%15000-14400)/140);
-      const snap=wu<0.25?wu/0.25:1-(wu-0.25)/0.75*0.15;
-      lhx=rx+sd*14-5+(rx+sd*12-3-(rx+sd*14-5))*snap;
-      lhy=KBD+3-3*snap;
-      rhx=rx+sd*14+5+(rx+sd*12+3-(rx+sd*14+5))*snap;
-      rhy=KBD+3-3*snap;
-      headDroop=16*(1-snap)-5*Math.sin(snap*Math.PI); // snap up then settle
-      headLean=sd*(1+snap*2);
+      const wu=Math.min(1,Math.max(0,(sT%15000-14400)/600));
+      lhx=KBDX-5; lhy=KBDY+3*(1-wu);
+      rhx=KBDX+5; rhy=KBDY+3*(1-wu);
+      headDroop=12*(1-wu);
+      headTiltX=-wu*3;
     }
 
-    // ─────────────────────────────────────────────────────────
-    ctx.strokeStyle=sc; ctx.fillStyle=sc;
-    ctx.lineWidth=2.0; ctx.lineCap='round'; ctx.lineJoin='round';
-
-    // ── Legs: only the shins visible below the desk panel ───
-    // Desk panel occupies ry-44 to ry-32; legs below ry-32 are visible.
-    // Knees at ry-20 (bent seated position), feet at ry-4.
-    // Keep very narrow: 4px either side of centre.
-    const kneeY = ry - 20, footY = ry - 4;
-    // Sleep / nodoff: feet tucked further back (relaxed)
-    const legVisible = (act !== 'sleep');
-    if (legVisible) {
+    // ── LEGS (side-view seated: thighs horizontal, shins down) ──
+    if (act !== 'sleep') {
+      ctx.lineWidth = 2.0;
+      // Front thigh: hip → knee (horizontal left = toward desk)
+      ctx.beginPath(); ctx.moveTo(0,HIP); ctx.lineTo(-12,HIP); ctx.stroke();
+      // Front shin: knee → foot (straight down)
       ctx.lineWidth = 1.8;
-      ctx.beginPath(); ctx.moveTo(rx-4, kneeY); ctx.lineTo(rx-4, footY); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(rx+4, kneeY); ctx.lineTo(rx+4, footY); ctx.stroke();
-      // Small feet pointing in screen direction
+      ctx.beginPath(); ctx.moveTo(-12,HIP); ctx.lineTo(-12,-3); ctx.stroke();
+      // Front foot
       ctx.lineWidth = 1.4;
-      ctx.beginPath(); ctx.moveTo(rx-4, footY); ctx.lineTo(rx-4+sd*4, footY); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(rx+4, footY); ctx.lineTo(rx+4+sd*4, footY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-12,-3); ctx.lineTo(-19,-3); ctx.stroke();
+      // Back thigh (slightly offset right, partially behind front)
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(0,HIP+1); ctx.lineTo(-8,HIP+1); ctx.stroke();
+      ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.moveTo(-8,HIP+1); ctx.lineTo(-8,-3); ctx.stroke();
+      ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.moveTo(-8,-3); ctx.lineTo(-14,-3); ctx.stroke();
     }
 
-    // ── Torso: hip (HIPY) to shoulder (SHIP), lean toward screen
-    ctx.lineWidth=2.2;
-    const shX = rx + sd*3, shY = SHIP + bob;
-    ctx.beginPath(); ctx.moveTo(rx, HIPY+bob); ctx.lineTo(shX, shY); ctx.stroke();
+    // ── TORSO ──────────────────────────────────────────────
+    ctx.strokeStyle = sc; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(0,HIP); ctx.lineTo(-3,SHO); ctx.stroke();
 
-    // ── Arms: reach toward keyboard on desk surface ──────────
-    // Both arms go forward (sd) and slightly inward to keyboard
-    ctx.lineWidth=1.8;
-
-    // Convert abstract pose params into actual hand positions
-    // Default: both hands resting on keyboard at kbdY, spread a little
-    let lhx = rx + sd*14 - 4,  lhy = kbdY + lHandY;
-    let rhx = rx + sd*14 + 4,  rhy = kbdY + rHandY;
-
-    // ── Arms: quadratic curves shoulder → elbow → hand ──────
-    // Elbow control point: partway between shoulder and hand, pulled inward
-    ctx.lineWidth=1.8;
-    const lElbX=(shX+lhx)*0.5 + sd*1, lElbY=(shY+lhy)*0.5 + 2;
-    const rElbX=(shX+rhx)*0.5 + sd*1, rElbY=(shY+rhy)*0.5 + (act==='talk'?-3:2);
+    // ── ARMS ───────────────────────────────────────────────
+    ctx.lineWidth = 1.8;
+    const shX = -3, shY = SHO;
+    // Elbow midpoint curves slightly downward
+    const lElbX=(shX+lhx)*0.5, lElbY=(shY+lhy)*0.5+4;
+    const rElbX=(shX+rhx)*0.5, rElbY=(shY+rhy)*0.5+(act==='talk'?-4:4);
     ctx.beginPath(); ctx.moveTo(shX,shY); ctx.quadraticCurveTo(lElbX,lElbY,lhx,lhy); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(shX,shY); ctx.quadraticCurveTo(rElbX,rElbY,rhx,rhy); ctx.stroke();
 
-    // Typing key-tap flash (hands lift above keyboard)
+    // Key-tap glow
     if (act==='type') {
-      if (lhy < KBD-0.5) { ctx.fillStyle='rgba(60,150,255,0.20)'; ctx.beginPath(); ctx.arc(lhx,KBD,4,0,Math.PI*2); ctx.fill(); }
-      if (rhy < KBD-0.5) { ctx.fillStyle='rgba(60,150,255,0.20)'; ctx.beginPath(); ctx.arc(rhx,KBD,4,0,Math.PI*2); ctx.fill(); }
-      ctx.strokeStyle=sc; ctx.fillStyle=sc;
+      if (lhy<KBDY-0.5){ctx.fillStyle='rgba(60,150,255,0.20)';ctx.beginPath();ctx.arc(lhx,KBDY,4,0,Math.PI*2);ctx.fill();}
+      if (rhy<KBDY-0.5){ctx.fillStyle='rgba(60,150,255,0.20)';ctx.beginPath();ctx.arc(rhx,KBDY,4,0,Math.PI*2);ctx.fill();}
+      ctx.strokeStyle=sc;ctx.fillStyle=sc;
     }
 
     // Phone handset
     if (showPhone) {
-      ctx.save(); ctx.translate(rhx, rhy); ctx.rotate(-0.9*sd);
+      ctx.save(); ctx.translate(rhx,rhy); ctx.rotate(-0.5);
       ctx.fillStyle='#252538'; ctx.fillRect(-2,-9,4,14);
       ctx.fillStyle='#353555'; ctx.fillRect(-1,-8,2,3); ctx.fillRect(-1,3,2,3);
       ctx.restore(); ctx.strokeStyle=sc;
     }
 
-    // Notepad + pen
+    // Notepad
     if (showPad) {
-      const px=rx+sd*22, py=KBD+1;
-      ctx.fillStyle='#e8dfc0'; ctx.fillRect(px-6,py-4,12,9);
-      ctx.strokeStyle='#b8a870'; ctx.lineWidth=0.6; ctx.strokeRect(px-6,py-4,12,9);
+      ctx.fillStyle='#e8dfc0'; ctx.fillRect(KBDX+8,KBDY-4,12,9);
+      ctx.strokeStyle='#b8a870'; ctx.lineWidth=0.6; ctx.strokeRect(KBDX+8,KBDY-4,12,9);
       ctx.strokeStyle='#9a9060';
-      for (let nl=0;nl<3;nl++) { ctx.beginPath(); ctx.moveTo(px-4,py-2+nl*2.8); ctx.lineTo(px+4,py-2+nl*2.8); ctx.stroke(); }
-      ctx.strokeStyle='#282828'; ctx.lineWidth=1.4;
-      ctx.beginPath(); ctx.moveTo(rhx,rhy); ctx.lineTo(rhx+sd*5,rhy-5); ctx.stroke();
-      ctx.fillStyle='#cc1111'; ctx.beginPath(); ctx.arc(rhx+sd*5,rhy-5,1.2,0,Math.PI*2); ctx.fill();
+      for(let nl=0;nl<3;nl++){ctx.beginPath();ctx.moveTo(KBDX+10,KBDY-2+nl*2.8);ctx.lineTo(KBDX+18,KBDY-2+nl*2.8);ctx.stroke();}
+      ctx.strokeStyle='#282828';ctx.lineWidth=1.4;
+      ctx.beginPath();ctx.moveTo(rhx,rhy);ctx.lineTo(rhx+6,rhy-5);ctx.stroke();
+      ctx.fillStyle='#cc1111';ctx.beginPath();ctx.arc(rhx+6,rhy-5,1.2,0,Math.PI*2);ctx.fill();
       ctx.strokeStyle=sc;
     }
 
-    // ── Head (torus, same style as player) ───────────────────
-    const hx2 = shX + headLean, hy2 = shY - 10 + bob + headDroop;
+    // ── HEAD ───────────────────────────────────────────────
+    const hx = shX+headTiltX, hy = shY-9+headDroop;
     ctx.strokeStyle=sc; ctx.lineWidth=1.8;
-    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(hx2, hy2+6); ctx.stroke(); // neck
+    ctx.beginPath(); ctx.moveTo(shX,shY); ctx.lineTo(hx,hy+5); ctx.stroke(); // neck
     ctx.fillStyle=sc;
     ctx.beginPath();
-    ctx.arc(hx2,hy2,6.5,0,Math.PI*2,false);
-    ctx.arc(hx2,hy2,4,  0,Math.PI*2,true);
+    ctx.arc(hx,hy,5,0,Math.PI*2,false);
+    ctx.arc(hx,hy,3,0,Math.PI*2,true);
     ctx.fill('evenodd');
-    ctx.strokeStyle=sc; ctx.lineWidth=1.3;
-    ctx.beginPath(); ctx.arc(hx2,hy2,6.5,0,Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(hx2,hy2,4,  0,Math.PI*2); ctx.stroke();
+    ctx.strokeStyle=sc; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.arc(hx,hy,5,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx,hy,3,0,Math.PI*2); ctx.stroke();
 
     // Accessories
-    if (type===0) { // glasses
-      ctx.strokeStyle='#888'; ctx.lineWidth=0.9;
-      ctx.beginPath(); ctx.arc(hx2+sd*2,hy2-1,2.5,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(hx2-sd*2,hy2-1,2.5,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(hx2+sd*2-2,hy2-1); ctx.lineTo(hx2-sd*2+2,hy2-1); ctx.stroke();
+    if (type===0) {  // glasses
+      ctx.strokeStyle='#888'; ctx.lineWidth=0.8;
+      ctx.beginPath(); ctx.arc(hx-2.5,hy-0.5,2,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(hx+2.5,hy-0.5,2,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hx-2.5+1.5,hy-0.5); ctx.lineTo(hx+2.5-1.5,hy-0.5); ctx.stroke();
     }
-    if (type===1) { // beanie
+    if (type===1) {  // beanie
       ctx.fillStyle='#3355aa';
-      ctx.beginPath(); ctx.arc(hx2,hy2-2,6,Math.PI,0); ctx.closePath(); ctx.fill();
-      ctx.fillStyle='#2244aa'; ctx.fillRect(hx2-6,hy2-4,12,3);
+      ctx.beginPath(); ctx.arc(hx,hy-1,5,Math.PI,0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#2244aa'; ctx.fillRect(hx-5,hy-3,10,2.5);
     }
 
-    // Mouth open during phone call
+    // Mouth
     if (mouth>0.05) {
       ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=0.9;
-      ctx.beginPath(); ctx.arc(hx2+sd,hy2+2,2*mouth,0.1,Math.PI-0.1); ctx.stroke();
+      ctx.beginPath(); ctx.arc(hx-1,hy+2,2*mouth,0.1,Math.PI-0.1); ctx.stroke();
     }
 
     // ZZZ bubbles
     if (act==='sleep'||act==='nodoff'||act==='wakeup') {
-      const sa = act==='sleep'?1 : act==='nodoff'?Math.min(1,(sT%15000-7000)/240) : Math.max(0,1-(sT%15000-14400)/100);
+      const sa=act==='sleep'?1:act==='nodoff'?Math.min(1,(sT%15000-7000)/240):Math.max(0,1-(sT%15000-14400)/100);
       if (sa>0.05) {
-        for (let zi=0;zi<3;zi++) {
+        for(let zi=0;zi<3;zi++) {
           const zPh=((sT*0.015+zi*0.55)%1);
           ctx.globalAlpha=sa*Math.min(1,Math.sin(zPh*Math.PI))*0.85;
           ctx.fillStyle='#aaccff'; ctx.font=`bold ${5+zi*2}px Courier New`; ctx.textAlign='center';
-          ctx.fillText('Z', rx+sd*20+zi*5*sd, hy2-12-zi*8-zPh*18);
+          ctx.fillText('Z',hx+12+zi*5,hy-10-zi*8-zPh*16);
         }
         ctx.globalAlpha=1; ctx.textAlign='left';
       }
     }
 
-    // Picker selection arrow above head
+    // Picker arrow
     if (animPicker.open && animPicker.desk===deskIndex) {
-      const arrowTip=hy2-16+Math.sin(f*0.12)*3;
+      const at=hy-18+Math.sin(f*0.12)*3;
       ctx.fillStyle='rgba(100,230,180,0.92)';
-      ctx.beginPath(); ctx.moveTo(rx,arrowTip); ctx.lineTo(rx-6,arrowTip-10); ctx.lineTo(rx+6,arrowTip-10); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0,at); ctx.lineTo(-6,at-10); ctx.lineTo(6,at-10); ctx.closePath(); ctx.fill();
     }
 
-    // Phone ring notification icon
+    ctx.restore();
+
+    // Phone ring icon (global coords)
     if (act==='ring') {
       const rb=Math.sin(sT*2.0)*2.5;
-      const rix=rx+sd*22, riy=ry-58+rb;
+      const rix=rx+22, riy=ry-60+rb;
       ctx.fillStyle=`rgba(30,195,75,${0.78+Math.sin(sT*2.0)*0.18})`;
       ctx.fillRect(rix-6,riy-7,12,14);
       ctx.strokeStyle='#fff'; ctx.lineWidth=1.2;
       ctx.beginPath(); ctx.moveTo(rix-3,riy+3); ctx.quadraticCurveTo(rix-3,riy-4,rix,riy-5); ctx.quadraticCurveTo(rix+3,riy-4,rix+3,riy+3); ctx.stroke();
       ctx.strokeStyle=`rgba(40,200,80,${0.40+Math.sin(sT*2.0)*0.28})`; ctx.lineWidth=1;
-      for (let ra=1;ra<=2;ra++) { ctx.beginPath(); ctx.arc(rix,riy,7+ra*6,-0.75,0.75); ctx.stroke(); }
+      for(let ra=1;ra<=2;ra++){ctx.beginPath();ctx.arc(rix,riy,7+ra*6,-0.75,0.75);ctx.stroke();}
     }
   }
 
@@ -5160,6 +5150,144 @@ function drawResearchInterior() {
     ctx.beginPath(); ctx.arc(0, -26, 8, 0, Math.PI*2); ctx.stroke();
     ctx.beginPath(); ctx.arc(0, -26, 5, 0, Math.PI*2); ctx.stroke();
     ctx.restore();
+  }
+
+  // ── LIGHTING OVERLAYS ─────────────────────────────────────
+  {
+    // Monitor screen glow — each desk monitor casts soft blue light onto the surface and researcher
+    for (const dk of desks) {
+      const dx=dk.x, dy=dk.y;
+      // Main monitor glow pool on desk surface
+      const mg = ctx.createRadialGradient(dx+50, dy-68, 4, dx+50, dy-68, 52);
+      mg.addColorStop(0, 'rgba(60,140,255,0.11)');
+      mg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = mg; ctx.fillRect(dx-10, dy-120, 90, 90);
+      // Glow cone from screen down to keyboard area
+      const mc = ctx.createLinearGradient(dx+50, dy-90, dx+50, dy-44);
+      mc.addColorStop(0, 'rgba(40,120,230,0.08)');
+      mc.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = mc; ctx.fillRect(dx+26, dy-90, 48, 46);
+      // Side monitor glow
+      const sm2x2 = dx + (dk.sd > 0 ? -26 : 86);
+      const sg = ctx.createRadialGradient(sm2x2+11, dy-62, 2, sm2x2+11, dy-62, 30);
+      sg.addColorStop(0, 'rgba(40,100,200,0.08)');
+      sg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sg; ctx.fillRect(sm2x2-10, dy-90, 44, 60);
+    }
+
+    // Desk lamps — articulated arm lamp on each desk
+    for (const dk of desks) {
+      const dx=dk.x, dy=dk.y;
+      const di=desks.indexOf(dk);
+      // Lamp position: far side of desk opposite the researcher
+      const lampX = dx + (dk.sd > 0 ? 6 : 76);
+      const lampBaseY = dy - 44;
+      const lampTilt = dk.sd * 0.3 + Math.sin(f * 0.008 + di) * 0.04;
+
+      // Base
+      ctx.fillStyle = '#1a1c2e';
+      ctx.beginPath(); ctx.roundRect(lampX - 5, lampBaseY - 2, 10, 4, 1); ctx.fill();
+      // Vertical post
+      ctx.strokeStyle = '#2a2c40'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(lampX, lampBaseY); ctx.lineTo(lampX, lampBaseY - 14); ctx.stroke();
+      // Articulated arm
+      const armEndX = lampX + dk.sd * 14 + Math.sin(lampTilt) * 8;
+      const armEndY = lampBaseY - 24;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(lampX, lampBaseY - 14); ctx.lineTo(armEndX, armEndY); ctx.stroke();
+      // Lamp head (hood shape)
+      ctx.save();
+      ctx.translate(armEndX, armEndY);
+      ctx.rotate(lampTilt + dk.sd * 0.5);
+      ctx.fillStyle = '#22243a';
+      ctx.beginPath();
+      ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.lineTo(6, 8); ctx.lineTo(-6, 8); ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffee88'; ctx.beginPath(); ctx.arc(0, 4, 4, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+
+      // Lamp warm glow cone onto desk
+      const gx = armEndX, gy = armEndY + 8;
+      const lampGrd = ctx.createRadialGradient(gx, gy+20, 2, gx, gy+20, 38);
+      lampGrd.addColorStop(0, 'rgba(255,230,130,0.18)');
+      lampGrd.addColorStop(0.5, 'rgba(255,200,80,0.06)');
+      lampGrd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = lampGrd; ctx.fillRect(gx - 38, gy, 76, 46);
+      // Warm highlight stripe on desk surface
+      ctx.fillStyle = `rgba(255,220,100,${0.06 + Math.sin(f*0.015+di)*0.02})`;
+      ctx.fillRect(Math.max(dx-4, gx-20), dy-44, 40, 3);
+    }
+
+    // Ceiling fluorescent glow — brighter visible cones sweeping down (re-drawn stronger)
+    const lightXs2 = [90,200,340,490,640,790,870];
+    for (const lx of lightXs2) {
+      const flicker2 = (lx===490 && (f%180 < 4 || (f%180>7&&f%180<11)));
+      const brightness = flicker2 ? 0.28 : 0.14;
+      const coneGrd = ctx.createRadialGradient(lx, 38, 0, lx, floorY, floorY-38);
+      coneGrd.addColorStop(0, `rgba(160,210,255,${brightness})`);
+      coneGrd.addColorStop(0.4, `rgba(120,180,240,${brightness*0.4})`);
+      coneGrd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = coneGrd; ctx.fillRect(lx-80, 38, 160, floorY-38);
+      // Bright floor pool
+      const poolGrd = ctx.createRadialGradient(lx, floorY+2, 0, lx, floorY+2, 70);
+      poolGrd.addColorStop(0, `rgba(140,200,255,${flicker2?0.18:0.09})`);
+      poolGrd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = poolGrd; ctx.fillRect(lx-70, floorY, 140, 50);
+    }
+
+    // Server rack blue ambient spill onto floor-left
+    const srvGrd = ctx.createLinearGradient(90, 0, 240, 0);
+    srvGrd.addColorStop(0, 'rgba(0,100,255,0.10)');
+    srvGrd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = srvGrd; ctx.fillRect(0, floorY-220, 240, 220);
+
+    // Window cold blue spill onto floor
+    const winCount2 = 3, winW2 = 110, winY2 = 58, winGap2 = (IW-90-88-winCount2*winW2)/(winCount2+1);
+    for (let wi=0;wi<winCount2;wi++) {
+      const wx2 = 90+winGap2+wi*(winW2+winGap2);
+      const wSpill = ctx.createLinearGradient(wx2+winW2/2, winY2+90, wx2+winW2/2, floorY+10);
+      wSpill.addColorStop(0, 'rgba(100,160,230,0.07)');
+      wSpill.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = wSpill; ctx.fillRect(wx2-20, winY2+90, winW2+40, floorY-winY2-80);
+    }
+
+    // Floor emergency LED strip (baseboard) — pulses red during high-tier storms
+    const tier2 = getWindTier();
+    if (tier2 >= 4) {
+      const ledAlpha = (tier2-3)/4 * (0.55 + Math.sin(f*0.12)*0.35);
+      ctx.fillStyle = `rgba(255,30,0,${ledAlpha*0.5})`;
+      ctx.fillRect(0, floorY-6, IW, 4);
+      // Point pulses along strip
+      for (let li=0;li<12;li++) {
+        const lx3 = (li*IW/11);
+        const lg = ctx.createRadialGradient(lx3, floorY-4, 0, lx3, floorY-4, 22);
+        lg.addColorStop(0, `rgba(255,40,0,${ledAlpha*0.7})`);
+        lg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = lg; ctx.fillRect(lx3-22, floorY-26, 44, 28);
+      }
+    }
+
+    // Specimen shelf colored vial glow
+    const shX2 = 94, shY2 = floorY - 252;
+    const vialGlows = ['rgba(0,80,255,0.12)','rgba(80,0,160,0.12)','rgba(0,140,0,0.10)','rgba(180,80,0,0.10)'];
+    for (let vi=0;vi<4;vi++) {
+      const vg = ctx.createRadialGradient(shX2+8+vi*11, shY2+60, 0, shX2+8+vi*11, shY2+60, 22);
+      vg.addColorStop(0, vialGlows[vi]);
+      vg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = vg; ctx.fillRect(shX2, shY2+40, 50, 50);
+    }
+
+    // Void storm purple/green ambient flicker
+    if (isVoidNow) {
+      const va = 0.06 + Math.sin(f*0.07)*0.04;
+      const vAmbGrd = ctx.createRadialGradient(IW/2, IH/2, 100, IW/2, IH/2, IW*0.7);
+      vAmbGrd.addColorStop(0, `rgba(60,0,120,${va})`);
+      vAmbGrd.addColorStop(0.6, `rgba(0,40,60,${va*0.5})`);
+      vAmbGrd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = vAmbGrd; ctx.fillRect(0, 0, IW, IH);
+    }
+
+    ctx.globalAlpha = 1;
   }
 
   // ── VOID STORM ALERT OVERLAY ──────────────────────────────
@@ -8221,8 +8349,6 @@ function drawHUD() {
     ctx.fillText('[M]', mbX + mbW - 6, mbY + 14);
   }
 
-  ctx.restore();
-
   if (bestScore > 0) {
     ctx.fillStyle = 'rgba(200,228,245,0.20)'; ctx.font = '8px Courier New';
     ctx.textAlign = 'center'; ctx.fillText('BEST ' + bestScore + 'm', 97, 53);
@@ -8457,7 +8583,7 @@ function draw() {
   drawVignette();
   ctx.restore();
   const inResearch = player.inHouse && player.inHouse.type === 'research';
-  document.getElementById('anim-btn').style.display = inResearch ? 'block' : 'none';
+  const _ab = document.getElementById('anim-btn'); if (_ab) _ab.style.display = inResearch ? 'block' : 'none';
   if (!inResearch) animPicker.open = false;
   if (inResearch) drawResearchInterior();
   if (inResearch && animPicker.open) drawAnimPicker();
