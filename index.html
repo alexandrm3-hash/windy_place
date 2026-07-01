@@ -333,6 +333,7 @@ function toggleAnimPicker() {
 }
 let researchPanic = []; // per-worker panic state for void storm running animation
 let researchFloor = 0;  // 0 = ground level, 1 = upper balcony
+let _ladderCooldown = 0;
 let secretTierTimer = 0;   // frames to show the secret tier unlock message
 let terrainDrama = 0;      // 0–1+ smoothly tracks tier; controls slope steepness
 let windDebris = [];
@@ -526,6 +527,7 @@ function updateWind() {
 // ── Player update ─────────────────────────────────────────
 function updatePlayer() {
   const chalActive = challenge && challenge.result === null;
+  const sprintKeyEarly = keys['ShiftLeft'] && !staminaDepleted && stamina > 0;
 
   // When sheltered: hold position in the house, skip all physics
   if (player.inHouse) {
@@ -534,27 +536,74 @@ function updatePlayer() {
     } else {
       const hFloor = player.inHouse.type === 'research' ? player.inHouse.y + 240 : player.inHouse.type === 'bunker' ? player.inHouse.y + 175 : player.inHouse.y + 120;
       if (player.inHouse.type === 'research') {
-        // Free movement inside research base — bounded to interior width
-        const sm = player.sprinting && !staminaDepleted ? 1.45 : 1.0;
+        const hcx = player.inHouse.x + player.inHouse.w / 2;
+        // Sprint inside base
+        const doSprint = sprintKeyEarly && player.onGround && !chalActive;
+        player.sprinting = doSprint;
+        if (doSprint) {
+          stamina = Math.max(0, stamina - 0.004);
+          if (stamina <= 0) { staminaDepleted = true; player.sprinting = false; }
+        } else if (!staminaDepleted) {
+          stamina = Math.min(1, stamina + 0.0018);
+        }
+        // Horizontal movement
+        const sm = player.sprinting ? 1.55 : 1.0;
         if (!chalActive && goLeft())  { player.vx -= 0.80 * sm; player.facing = -1; }
         if (!chalActive && goRight()) { player.vx += 0.80 * sm; player.facing =  1; }
         if (chalActive || (!goLeft() && !goRight())) player.vx *= 0.72;
         player.vx = Math.max(-4, Math.min(4, player.vx));
         player.x += player.vx;
-        // Ladder zone: interior screen x≈820 maps to world-x = hcx + (820 - IW/2)
-        const hcx = player.inHouse.x + player.inHouse.w / 2;
-        const ladderWorldX = hcx + (820 - 450); // 450 = IW/2
-        const onLadder = Math.abs((player.x + player.w/2) - ladderWorldX) < 22;
-        if (onLadder && researchFloor === 0 && keys['KeyW']) researchFloor = 1;
-        if (onLadder && researchFloor === 1 && keys['KeyS']) researchFloor = 0;
-        // Floor height depends on which level player is on
-        const floorOffset = researchFloor === 1 ? -150 : 0;
-        player.y  = hFloor - player.h + floorOffset;
-        player.onGround = true;
-        // Clamp to interior bounds — full room width (IW=900, centred on hcx)
-        const xMin = researchFloor === 1 ? hcx + 20 : hcx - 440;
-        const xMax = hcx + 430;
-        player.x = Math.max(xMin, Math.min(xMax, player.x));
+
+        // Gravity
+        player.vy = Math.min(player.vy + 0.55, 14);
+        player.y += player.vy;
+        player.onGround = false;
+
+        // Floor collision helpers (world Y coords)
+        const groundFloor  = hFloor - player.h;          // ground level
+        const balconyFloor = hFloor - 150 - player.h;    // balcony level
+        const pScreenX = W / 2 + (player.x + player.w / 2 - hcx);
+        const inBalconyX = true;                            // balcony is full width
+
+        // Balcony floor — only when player is in the balcony X range and falling onto it
+        if (inBalconyX && player.vy >= 0 && player.y >= balconyFloor && player.y < balconyFloor + 16) {
+          player.y = balconyFloor; player.vy = 0; player.onGround = true; researchFloor = 1;
+        }
+        // Ground floor
+        if (player.vy >= 0 && player.y >= groundFloor) {
+          player.y = groundFloor; player.vy = 0; player.onGround = true; researchFloor = 0;
+        }
+
+        // Jump
+        if (!chalActive && doJump() && player.onGround) {
+          player.vy = -10.5; player.onGround = false;
+        }
+
+        // Ladder climb — F key when near ladder
+        const ladderScreenX = W - 248;
+        const nearLadder = Math.abs(pScreenX - ladderScreenX) < 36;
+        if (nearLadder && keys['KeyF'] && !_ladderCooldown) {
+          _ladderCooldown = 20;
+          if (researchFloor === 0) {
+            // Climb up
+            player.y = hFloor - 150 - player.h;
+            player.vy = 0; player.onGround = true; researchFloor = 1;
+          } else {
+            // Climb down
+            player.y = hFloor - player.h;
+            player.vy = 0; player.onGround = true; researchFloor = 0;
+          }
+        }
+        if (_ladderCooldown > 0) _ladderCooldown--;
+
+        // Walk animation counter
+        const wStep = player.sprinting ? 8 : 9;
+        if (Math.abs(player.vx) > 0.5 && player.onGround) {
+          if (++player.walkT >= wStep) { player.walkT = 0; player.walkF = (player.walkF + 1) % 6; }
+        } else if (player.onGround) { player.walkF = 0; }
+
+        // X clamp — full room width on both floors
+        player.x = Math.max(hcx - 440, Math.min(hcx + 430, player.x));
       } else {
         player.vx = 0; player.vy = 0;
         player.x = player.inHouse.x + player.inHouse.w / 2 - player.w / 2;
@@ -565,12 +614,14 @@ function updatePlayer() {
       if (cam.x < 0) cam.x = 0;
       cam.y += (player.y - H * 0.60 - cam.y) * 0.09;
       if (player.x > maxReach) maxReach = player.x;
-      // Regen stamina while sheltered
-      player.sprinting = false;
-      if (staminaDepleted) {
-        if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
-      } else {
-        stamina = Math.min(1, stamina + 0.0018);
+      // Regen stamina while sheltered (research base handles its own stamina above)
+      if (player.inHouse && player.inHouse.type !== 'research') {
+        player.sprinting = false;
+        if (staminaDepleted) {
+          if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
+        } else {
+          stamina = Math.min(1, stamina + 0.0018);
+        }
       }
       return;
     }
@@ -1111,7 +1162,7 @@ function update() {
   const _lf = tornado && tornado.alpha > 0.60 && (frame % 38 === 0 || frame % 55 === 0 || frame % 71 === 0);
   const _inResearch = player.inHouse && player.inHouse.type === 'research';
   const _audioMult  = _inResearch ? 0.15 : 1.0;
-  WindAudio.update(wind.strength * _audioMult, wind.force, tornado ? tornado.alpha * _audioMult : 0, freezing, _lf, wind.force < -2.60);
+  WindAudio.update(wind.strength * _audioMult, wind.force, tornado ? tornado.alpha * _audioMult : 0, freezing, _lf, wind.force < -2.60, _inResearch);
   if (gState !== 'playing') return;
   updateWind();
   updatePlayer();
@@ -3309,6 +3360,9 @@ function drawResearchInterior() {
   const isVoidNow = wind.force < -2.60;
   const f = frame;
 
+  // Per-base color seed — each research base (unique x) gets its own palette offsets
+  const _baseSeed = player.inHouse ? Math.abs(Math.round(player.inHouse.x / 10)) : 0;
+
   // ── helper: animated seated researcher ──────────────────
   function researcher(rx, ry, fac, sd, bobOffset, variant, deskIndex) {
     const sT   = f + deskIndex * 173;
@@ -3329,6 +3383,15 @@ function drawResearchInterior() {
     } else if (deskIndex === 0) {
       const sc2 = sT % 15000;
       act = sc2<7000?(cyc<560?'type':'read'):sc2<7240?'nodoff':sc2<14400?'sleep':'wakeup';
+    } else if (deskIndex === 4) {
+      act = cyc<400?'type':cyc<560?'write':'read';
+    } else if (deskIndex === 5) {
+      act = cyc<200?'type':cyc<340?'ring':cyc<540?'talk':cyc<610?'hangup':'type';
+    } else if (deskIndex === 6) {
+      act = cyc<460?'type':cyc<580?'stretch':'read';
+    } else if (deskIndex === 7) {
+      const sc2 = sT % 12000;
+      act = sc2<5500?(cyc<520?'type':'read'):sc2<5700?'nodoff':sc2<11200?'sleep':'wakeup';
     } else {
       act = cyc<560?'type':cyc<692?'read':'type';
     }
@@ -3338,9 +3401,9 @@ function drawResearchInterior() {
     // fac only affects chair-back side (cosmetic), not body direction.
     const RESEARCHER_COLORS = ['#e87060','#60c8e8','#70e898','#e8c840','#c078e8','#e8884a','#60e8d0','#e860a8','#f0f060','#80e860','#e860d0','#40d0f8','#f8a030','#a0f040','#f06090','#50f0c0','#d0a0f8','#f8d060','#60a8f8','#f87840'];
     const SCARF_COLORS = ['#ff4444','#ff9900','#ffdd00','#44dd44','#4499ff','#cc44ff','#ff44aa','#44ffee','#ff6622','#aaffaa','#ffaaff','#22ccff'];
-    const hasScarf = (deskIndex * 7 + variant * 3) % 3 !== 0; // ~2/3 of researchers have a scarf
-    const scarfColor = SCARF_COLORS[(deskIndex * 5 + variant * 11) % SCARF_COLORS.length];
-    const sc = RESEARCHER_COLORS[deskIndex % RESEARCHER_COLORS.length];
+    const hasScarf = (deskIndex * 7 + variant * 3 + _baseSeed) % 3 !== 0;
+    const scarfColor = SCARF_COLORS[(deskIndex * 5 + variant * 11 + _baseSeed) % SCARF_COLORS.length];
+    const sc = RESEARCHER_COLORS[(deskIndex + _baseSeed) % RESEARCHER_COLORS.length];
     ctx.save();
     ctx.translate(rx, ry + 7);
     ctx.strokeStyle = sc; ctx.fillStyle = sc;
@@ -3728,71 +3791,6 @@ function drawResearchInterior() {
     ctx.fillStyle = lr; ctx.fillRect(lx-50, floorY, 100, 40);
   }
 
-  // ── UPPER BALCONY (right side, reachable by ladder at x≈820) ──
-  {
-    const balY  = floorY - 150;  // balcony floor Y
-    const balX  = 680;           // balcony left edge
-    const balW  = IW - balX;     // spans to right wall
-    const ladX  = 820;           // ladder centre X
-    const ladTop = balY;
-    const ladBot = floorY - 3;
-
-    // Underside support beams
-    ctx.fillStyle = '#131828';
-    ctx.fillRect(balX, balY + 8, balW, 14);
-    ctx.fillStyle = '#0e1220';
-    for (let bx = balX + 20; bx < IW; bx += 60) {
-      ctx.fillRect(bx - 5, balY + 8, 10, ladBot - balY - 8);
-    }
-
-    // Balcony floor surface
-    ctx.fillStyle = '#1a1e2e';
-    ctx.fillRect(balX, balY - 6, balW, 10);
-    ctx.fillStyle = '#22283c';
-    ctx.fillRect(balX, balY - 6, balW, 3);
-    // Floor tiles on balcony
-    ctx.strokeStyle = '#181c28'; ctx.lineWidth = 0.8;
-    for (let tx = balX; tx < IW; tx += 40) {
-      ctx.beginPath(); ctx.moveTo(tx, balY - 6); ctx.lineTo(tx, balY + 4); ctx.stroke();
-    }
-    // Safety railing
-    ctx.strokeStyle = '#2a3050'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(balX, balY - 14); ctx.lineTo(IW - 4, balY - 14); ctx.stroke();
-    ctx.lineWidth = 1;
-    for (let rx = balX + 10; rx < IW - 4; rx += 18) {
-      ctx.beginPath(); ctx.moveTo(rx, balY - 6); ctx.lineTo(rx, balY - 14); ctx.stroke();
-    }
-    // Railing post caps
-    ctx.fillStyle = '#3a4060';
-    for (let rx = balX + 10; rx < IW - 4; rx += 18) {
-      ctx.fillRect(rx - 1.5, balY - 16, 3, 3);
-    }
-
-    // ── LADDER ──────────────────────────────────────────────
-    // Rails
-    ctx.strokeStyle = '#384060'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(ladX - 8, ladTop); ctx.lineTo(ladX - 8, ladBot); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(ladX + 8, ladTop); ctx.lineTo(ladX + 8, ladBot); ctx.stroke();
-    // Rungs
-    ctx.strokeStyle = '#4a5878'; ctx.lineWidth = 2;
-    for (let ry = ladBot - 10; ry > ladTop; ry -= 14) {
-      ctx.beginPath(); ctx.moveTo(ladX - 8, ry); ctx.lineTo(ladX + 8, ry); ctx.stroke();
-    }
-    // Ladder highlight (worn centre strip)
-    ctx.strokeStyle = 'rgba(180,200,255,0.12)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(ladX, ladTop); ctx.lineTo(ladX, ladBot); ctx.stroke();
-
-    // "CLIMB" hint label when player is nearby
-    const hcxB = player.inHouse ? player.inHouse.x + player.inHouse.w / 2 : 0;
-    const pscreenX = IW / 2 + (player.x + player.w / 2 - hcxB);
-    if (Math.abs(pscreenX - ladX) < 40) {
-      const hint = researchFloor === 0 ? 'W  climb up' : 'S  climb down';
-      ctx.fillStyle = 'rgba(180,220,255,0.75)';
-      ctx.font = 'bold 8px Courier New'; ctx.textAlign = 'center';
-      ctx.fillText(hint, ladX, ladTop - 20);
-      ctx.textAlign = 'left';
-    }
-  }
 
   // ── CEILING ────────────────────────────────────────────
   ctx.fillStyle = '#090c14'; ctx.fillRect(0, 0, IW, 48);
@@ -4127,14 +4125,14 @@ function drawResearchInterior() {
   // dy is the floor surface — desks/chairs sit on top of it (floor surface is floorY)
   const deskY = floorY - 2;
   const desks = [
-    {x:98, y:deskY, fac:-1, sd:1,  bob:0.0, var:0, row:'back'},
-    {x:172,y:deskY, fac: 1, sd:-1, bob:1.2, var:1, row:'back'},
-    {x:258,y:deskY, fac:-1, sd:1,  bob:2.4, var:2, row:'back'},
-    {x:340,y:deskY, fac: 1, sd:-1, bob:0.8, var:3, row:'back'},
+    {x:100,y:deskY, fac:-1, sd:1,  bob:0.0, var:0, row:'back'},
+    {x:185,y:deskY, fac: 1, sd:-1, bob:1.2, var:1, row:'back'},
+    {x:270,y:deskY, fac:-1, sd:1,  bob:2.4, var:2, row:'back'},
+    {x:355,y:deskY, fac: 1, sd:-1, bob:0.8, var:3, row:'back'},
     {x:440,y:deskY, fac:-1, sd:1,  bob:1.6, var:0, row:'back'},
-    {x:530,y:deskY, fac: 1, sd:-1, bob:3.0, var:1, row:'back'},
-    {x:618,y:deskY, fac:-1, sd:1,  bob:0.4, var:2, row:'back'},
-    {x:640,y:deskY, fac: 1, sd:-1, bob:2.2, var:3, row:'back'},
+    {x:525,y:deskY, fac: 1, sd:-1, bob:3.0, var:1, row:'back'},
+    {x:610,y:deskY, fac:-1, sd:1,  bob:0.4, var:2, row:'back'},
+    {x:695,y:deskY, fac: 1, sd:-1, bob:2.2, var:3, row:'back'},
   ];
 
   for (const dk of desks) {
@@ -4623,10 +4621,10 @@ function drawResearchInterior() {
       const phase2 = (f * 0.18 + wi * 1.1) % (Math.PI * 2);
       const RESEARCHER_COLORS = ['#e87060','#60c8e8','#70e898','#e8c840','#c078e8','#e8884a','#60e8d0','#e860a8','#f0f060','#80e860','#e860d0','#40d0f8','#f8a030','#a0f040','#f06090','#50f0c0','#d0a0f8','#f8d060','#60a8f8','#f87840'];
       const SCARF_COLORS = ['#ff4444','#ff9900','#ffdd00','#44dd44','#4499ff','#cc44ff','#ff44aa','#44ffee','#ff6622','#aaffaa','#ffaaff','#22ccff'];
-      const sc = RESEARCHER_COLORS[wi % RESEARCHER_COLORS.length];
+      const sc = RESEARCHER_COLORS[(wi + _baseSeed) % RESEARCHER_COLORS.length];
       const pVariant = desks[wi] ? desks[wi].var : wi;
-      const pHasScarf = (wi * 7 + pVariant * 3) % 3 !== 0;
-      const pScarfColor = SCARF_COLORS[(wi * 5 + pVariant * 11) % SCARF_COLORS.length];
+      const pHasScarf = (wi * 7 + pVariant * 3 + _baseSeed) % 3 !== 0;
+      const pScarfColor = SCARF_COLORS[(wi * 5 + pVariant * 11 + _baseSeed) % SCARF_COLORS.length];
       ctx.save();
       ctx.translate(wx2, wy);
       if (pw.dir < 0) ctx.scale(-1, 1);
@@ -5255,11 +5253,66 @@ function drawResearchInterior() {
     ctx.textAlign='left';
   }
 
+  // ── UPPER BALCONY — drawn late so it's on top of everything ──
+  {
+    const balY  = floorY - 150;   // balcony floor Y (full width)
+    const ladX  = IW - 248;       // ladder centre near exit check window
+    const ladTop = balY;
+    const ladBot = floorY - 3;
+
+    // Underside support beams (full width)
+    ctx.fillStyle = '#131828';
+    ctx.fillRect(0, balY + 8, IW, 14);
+    ctx.fillStyle = '#0e1220';
+    for (let bx = 20; bx < IW; bx += 60) {
+      ctx.fillRect(bx - 4, balY + 8, 8, ladBot - balY - 8);
+    }
+
+    // Balcony floor surface (full width)
+    ctx.fillStyle = '#1a1e2e';
+    ctx.fillRect(0, balY - 6, IW, 10);
+    ctx.fillStyle = '#22283c';
+    ctx.fillRect(0, balY - 6, IW, 3);
+    ctx.strokeStyle = '#181c28'; ctx.lineWidth = 0.8;
+    for (let tx = 0; tx < IW; tx += 40) {
+      ctx.beginPath(); ctx.moveTo(tx, balY - 6); ctx.lineTo(tx, balY + 4); ctx.stroke();
+    }
+
+    // ── LADDER ──────────────────────────────────────────────
+    ctx.strokeStyle = '#5a7090'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(ladX - 9, ladTop); ctx.lineTo(ladX - 9, ladBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ladX + 9, ladTop); ctx.lineTo(ladX + 9, ladBot); ctx.stroke();
+    ctx.strokeStyle = '#6a88aa'; ctx.lineWidth = 2.5;
+    for (let ry = ladBot - 12; ry > ladTop; ry -= 14) {
+      ctx.beginPath(); ctx.moveTo(ladX - 9, ry); ctx.lineTo(ladX + 9, ry); ctx.stroke();
+    }
+    // Glow so it's easy to spot
+    ctx.strokeStyle = 'rgba(100,180,255,0.25)'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(ladX, ladTop); ctx.lineTo(ladX, ladBot); ctx.stroke();
+
+    // "FLOOR 2" label
+    ctx.fillStyle = 'rgba(100,160,255,0.5)'; ctx.font = 'bold 7px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('FLOOR  2', IW / 2, balY - 18);
+    ctx.textAlign = 'left';
+
+    // Jump hint
+    const hcxB = player.inHouse ? player.inHouse.x + player.inHouse.w / 2 : 0;
+    const pscreenX = W / 2 + (player.x + player.w / 2 - hcxB);
+    if (Math.abs(pscreenX - ladX) < 55) {
+      ctx.fillStyle = 'rgba(180,220,255,0.9)';
+      ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText(researchFloor === 0 ? '[F]  climb up' : '[F]  climb down', ladX, ladTop - 28);
+      ctx.textAlign = 'left';
+    }
+  }
+
   // ── PLAYER STICKMAN inside research base (same as outdoor) ──
   {
     const hcx2 = player.inHouse.x + player.inHouse.w / 2;
     const psx = IW / 2 + (player.x + player.w / 2 - hcx2);
-    const psy = floorY - (researchFloor === 1 ? 150 : 0);
+    // psy: map world player-feet to screen Y (floorY = ground, balcony = floorY-150)
+    const _hFloor2 = player.inHouse.y + 240;
+    const psy = floorY - (_hFloor2 - (player.y + player.h));
     const pf  = player.facing;
     const moving = Math.abs(player.vx) > 0.5;
     const run    = player.sprinting && moving;
@@ -8769,7 +8822,7 @@ function draw() {
 // ── Audio System ──────────────────────────────────────────
 const WindAudio = (() => {
   let ac = null;
-  let master, windGain, windLP, gustGain, rumbleGain, droneGain, torGain, iceGain, voidAlarmGain, voidAlarmOsc, voidAlarmLFO;
+  let master, windGain, windLP, gustGain, rumbleGain, droneGain, torGain, iceGain, voidAlarmGain, voidAlarmOsc, voidAlarmLFO, baseMusic;
   let started = false, prevLightning = false;
 
   // Pink-ish noise (gentler than brown)
@@ -8865,6 +8918,58 @@ const WindAudio = (() => {
     voidAlarmOsc.connect(alarmBP); alarmBP.connect(voidAlarmGain);
     voidAlarmGain.connect(master);
     voidAlarmOsc.start(); voidAlarmLFO.start();
+
+    // ── Layer 8: research base ambient music ──────────────────
+    // Soft generative pad: two detuned sine oscillators + a slow melody oscillator
+    baseMusic = (() => {
+      const g = ac.createGain(); g.gain.value = 0.0; g.connect(master);
+
+      // Warm pad — two oscillators slightly detuned
+      const pad1 = ac.createOscillator(); pad1.type = 'sine'; pad1.frequency.value = 220;
+      const pad2 = ac.createOscillator(); pad2.type = 'sine'; pad2.frequency.value = 221.4; // slight detune
+      const pad3 = ac.createOscillator(); pad3.type = 'triangle'; pad3.frequency.value = 330;
+
+      const padLP = ac.createBiquadFilter(); padLP.type = 'lowpass'; padLP.frequency.value = 900; padLP.Q.value = 0.5;
+
+      const g1 = ac.createGain(); g1.gain.value = 0.18;
+      const g2 = ac.createGain(); g2.gain.value = 0.14;
+      const g3 = ac.createGain(); g3.gain.value = 0.07;
+
+      pad1.connect(g1); pad2.connect(g2); pad3.connect(g3);
+      g1.connect(padLP); g2.connect(padLP); g3.connect(padLP);
+      padLP.connect(g);
+
+      // Slow breathing LFO on the pad volume
+      const breathLFO = ac.createOscillator(); breathLFO.type = 'sine'; breathLFO.frequency.value = 0.07;
+      const breathGain = ac.createGain(); breathGain.gain.value = 0.06;
+      breathLFO.connect(breathGain); breathGain.connect(g1.gain); breathGain.connect(g2.gain);
+
+      // Gentle melody — slow pentatonic sequence (A minor pentatonic: A3 C4 D4 E4 G4)
+      const melNotes = [220, 262, 294, 330, 392, 330, 262, 294];
+      let melIdx = 0;
+      const mel = ac.createOscillator(); mel.type = 'sine'; mel.frequency.value = melNotes[0];
+      const melEnv = ac.createGain(); melEnv.gain.value = 0.0;
+      const melLP = ac.createBiquadFilter(); melLP.type = 'lowpass'; melLP.frequency.value = 1200;
+      mel.connect(melLP); melLP.connect(melEnv); melEnv.connect(g);
+
+      // Step melody every ~2.8 seconds
+      const melStep = () => {
+        if (!ac) return;
+        const now = ac.currentTime;
+        melIdx = (melIdx + 1) % melNotes.length;
+        mel.frequency.setTargetAtTime(melNotes[melIdx], now, 0.04);
+        melEnv.gain.cancelScheduledValues(now);
+        melEnv.gain.setValueAtTime(0.0, now);
+        melEnv.gain.linearRampToValueAtTime(0.09, now + 0.15);
+        melEnv.gain.setTargetAtTime(0.0, now + 0.9, 0.4);
+        setTimeout(melStep, 2800 + Math.random() * 600);
+      };
+      setTimeout(melStep, 1200);
+
+      pad1.start(); pad2.start(); pad3.start(); breathLFO.start(); mel.start();
+
+      return g; // expose only the gain node
+    })();
   }
 
   function footstep(running) {
@@ -9016,7 +9121,7 @@ const WindAudio = (() => {
     s.connect(lp); lp.connect(g); g.connect(master); s.start();
   }
 
-  function update(wStr, wForce, torAlpha, freeze, lightning, voidStorm) {
+  function update(wStr, wForce, torAlpha, freeze, lightning, voidStorm, inBase) {
     if (!ac) return;
     if (ac.state === 'suspended') ac.resume();
     const t = ac.currentTime, sm = 0.18;
@@ -9042,6 +9147,9 @@ const WindAudio = (() => {
 
     // Void storm alarm — quiet indoor wail, fades in/out smoothly
     if (voidAlarmGain) voidAlarmGain.gain.setTargetAtTime(voidStorm ? 0.07 : 0.0, t, 0.8);
+
+    // Base ambient music — plays in research base, stops during void storm alarm
+    if (baseMusic) baseMusic.gain.setTargetAtTime((inBase && !voidStorm) ? 0.55 : 0.0, t, 1.2);
 
     if (lightning && !prevLightning) thunder();
     prevLightning = lightning;
