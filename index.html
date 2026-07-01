@@ -1098,7 +1098,7 @@ function drawCraters() {
 function update() {
   frame++;
   const _lf = tornado && tornado.alpha > 0.60 && (frame % 38 === 0 || frame % 55 === 0 || frame % 71 === 0);
-  WindAudio.update(wind.strength, wind.force, tornado ? tornado.alpha : 0, freezing, _lf);
+  WindAudio.update(wind.strength, wind.force, tornado ? tornado.alpha : 0, freezing, _lf, wind.force < -2.60);
   if (gState !== 'playing') return;
   updateWind();
   updatePlayer();
@@ -4542,7 +4542,12 @@ function drawResearchInterior() {
       const wx2 = pw.x;
       const wy  = deskY;
       const phase2 = (f * 0.18 + wi * 1.1) % (Math.PI * 2);
-      const sc = '#d0dff0';
+      const RESEARCHER_COLORS = ['#e87060','#60c8e8','#70e898','#e8c840','#c078e8','#e8884a','#60e8d0','#e860a8','#f0f060','#80e860','#e860d0','#40d0f8','#f8a030','#a0f040','#f06090','#50f0c0','#d0a0f8','#f8d060','#60a8f8','#f87840'];
+      const SCARF_COLORS = ['#ff4444','#ff9900','#ffdd00','#44dd44','#4499ff','#cc44ff','#ff44aa','#44ffee','#ff6622','#aaffaa','#ffaaff','#22ccff'];
+      const sc = RESEARCHER_COLORS[wi % RESEARCHER_COLORS.length];
+      const pVariant = desks[wi] ? desks[wi].var : wi;
+      const pHasScarf = (wi * 7 + pVariant * 3) % 3 !== 0;
+      const pScarfColor = SCARF_COLORS[(wi * 5 + pVariant * 11) % SCARF_COLORS.length];
       ctx.save();
       ctx.translate(wx2, wy);
       if (pw.dir < 0) ctx.scale(-1, 1);
@@ -4590,6 +4595,29 @@ function drawResearchInterior() {
       // Panic expression — open mouth arc
       ctx.strokeStyle = '#0a0d14'; ctx.lineWidth = 0.9;
       ctx.beginPath(); ctx.arc(1, hcy + 1, 2.5, 0.1, Math.PI - 0.1); ctx.stroke();
+
+      // Scarf (flapping while running)
+      if (pHasScarf) {
+        const flap = Math.sin(phase2 * 2) * 3;
+        const neckY = NY + 3;
+        ctx.fillStyle = pScarfColor;
+        ctx.beginPath();
+        ctx.ellipse(0, neckY, 4.5, 2.5, -0.3, 0, Math.PI*2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-2, neckY+1);
+        ctx.lineTo(-5 + flap, neckY+7);
+        ctx.lineTo(-2 + flap, neckY+8);
+        ctx.lineTo(1, neckY+3);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = pScarfColor + 'cc';
+        ctx.beginPath();
+        ctx.moveTo(1, neckY+1);
+        ctx.lineTo(4 + flap*0.5, neckY+5);
+        ctx.lineTo(2 + flap*0.5, neckY+6);
+        ctx.lineTo(-1, neckY+2);
+        ctx.closePath(); ctx.fill();
+      }
 
       ctx.restore();
     }
@@ -8630,7 +8658,7 @@ function draw() {
 // ── Audio System ──────────────────────────────────────────
 const WindAudio = (() => {
   let ac = null;
-  let master, windGain, windLP, gustGain, rumbleGain, droneGain, torGain, iceGain;
+  let master, windGain, windLP, gustGain, rumbleGain, droneGain, torGain, iceGain, voidAlarmGain, voidAlarmOsc, voidAlarmLFO;
   let started = false, prevLightning = false;
 
   // Pink-ish noise (gentler than brown)
@@ -8710,6 +8738,22 @@ const WindAudio = (() => {
     const iLP = ac.createBiquadFilter(); iLP.type = 'lowpass'; iLP.frequency.value = 3000;
     iceGain = ac.createGain(); iceGain.gain.value = 0.0;
     i1.connect(iMix); i2.connect(iMix); iMix.connect(iLP); iLP.connect(iceGain); iceGain.connect(master);
+
+    // ── Layer 7: void storm alarm — slow two-tone siren ──────────
+    // LFO sweeps frequency between 440 and 600 Hz at 0.4 Hz (slow wail)
+    voidAlarmOsc = ac.createOscillator(); voidAlarmOsc.type = 'sine';
+    voidAlarmOsc.frequency.value = 500;
+    voidAlarmLFO = ac.createOscillator(); voidAlarmLFO.type = 'sine';
+    voidAlarmLFO.frequency.value = 0.35; // one sweep per ~2.8 seconds
+    const alarmLFOGain = ac.createGain(); alarmLFOGain.gain.value = 80; // ±80 Hz sweep
+    voidAlarmLFO.connect(alarmLFOGain); alarmLFOGain.connect(voidAlarmOsc.frequency);
+    // Soft bandpass to keep it muffled (indoor alarm through walls)
+    const alarmBP = ac.createBiquadFilter(); alarmBP.type = 'bandpass';
+    alarmBP.frequency.value = 520; alarmBP.Q.value = 3.0;
+    voidAlarmGain = ac.createGain(); voidAlarmGain.gain.value = 0.0;
+    voidAlarmOsc.connect(alarmBP); alarmBP.connect(voidAlarmGain);
+    voidAlarmGain.connect(master);
+    voidAlarmOsc.start(); voidAlarmLFO.start();
   }
 
   function footstep(running) {
@@ -8861,7 +8905,7 @@ const WindAudio = (() => {
     s.connect(lp); lp.connect(g); g.connect(master); s.start();
   }
 
-  function update(wStr, wForce, torAlpha, freeze, lightning) {
+  function update(wStr, wForce, torAlpha, freeze, lightning, voidStorm) {
     if (!ac) return;
     if (ac.state === 'suspended') ac.resume();
     const t = ac.currentTime, sm = 0.18;
@@ -8884,6 +8928,9 @@ const WindAudio = (() => {
 
     // Freeze whisper
     iceGain.gain.setTargetAtTime(Math.max(0, freeze - 0.35) * 0.28, t, sm);
+
+    // Void storm alarm — quiet indoor wail, fades in/out smoothly
+    if (voidAlarmGain) voidAlarmGain.gain.setTargetAtTime(voidStorm ? 0.07 : 0.0, t, 0.8);
 
     if (lightning && !prevLightning) thunder();
     prevLightning = lightning;
