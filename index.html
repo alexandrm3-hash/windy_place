@@ -332,6 +332,7 @@ function toggleAnimPicker() {
   animPicker.open = !animPicker.open;
 }
 let researchPanic = []; // per-worker panic state for void storm running animation
+let researchFloor = 0;  // 0 = ground level, 1 = upper balcony
 let secretTierTimer = 0;   // frames to show the secret tier unlock message
 let terrainDrama = 0;      // 0–1+ smoothly tracks tier; controls slope steepness
 let windDebris = [];
@@ -540,11 +541,20 @@ function updatePlayer() {
         if (chalActive || (!goLeft() && !goRight())) player.vx *= 0.72;
         player.vx = Math.max(-4, Math.min(4, player.vx));
         player.x += player.vx;
-        player.y  = hFloor - player.h;
-        player.onGround = true;
-        // Clamp to interior bounds (research base is 320px wide centered on h.x+h.w/2)
+        // Ladder zone: interior screen x≈820 maps to world-x = hcx + (820 - IW/2)
         const hcx = player.inHouse.x + player.inHouse.w / 2;
-        player.x = Math.max(hcx - 148, Math.min(hcx + 140, player.x));
+        const ladderWorldX = hcx + (820 - 450); // 450 = IW/2
+        const onLadder = Math.abs((player.x + player.w/2) - ladderWorldX) < 22;
+        if (onLadder && researchFloor === 0 && keys['KeyW']) researchFloor = 1;
+        if (onLadder && researchFloor === 1 && keys['KeyS']) researchFloor = 0;
+        // Floor height depends on which level player is on
+        const floorOffset = researchFloor === 1 ? -150 : 0;
+        player.y  = hFloor - player.h + floorOffset;
+        player.onGround = true;
+        // Clamp to interior bounds — full room width (IW=900, centred on hcx)
+        const xMin = researchFloor === 1 ? hcx + 20 : hcx - 440;
+        const xMax = hcx + 430;
+        player.x = Math.max(xMin, Math.min(xMax, player.x));
       } else {
         player.vx = 0; player.vy = 0;
         player.x = player.inHouse.x + player.inHouse.w / 2 - player.w / 2;
@@ -722,6 +732,7 @@ function nearHouse(h) {
 function handleEnterExit() {
   if (player.inHouse) {
     player.inHouse = null;
+    researchFloor = 0;
   } else {
     for (const h of houses) {
       if (nearHouse(h)) {
@@ -1098,7 +1109,9 @@ function drawCraters() {
 function update() {
   frame++;
   const _lf = tornado && tornado.alpha > 0.60 && (frame % 38 === 0 || frame % 55 === 0 || frame % 71 === 0);
-  WindAudio.update(wind.strength, wind.force, tornado ? tornado.alpha : 0, freezing, _lf, wind.force < -2.60);
+  const _inResearch = player.inHouse && player.inHouse.type === 'research';
+  const _audioMult  = _inResearch ? 0.15 : 1.0;
+  WindAudio.update(wind.strength * _audioMult, wind.force, tornado ? tornado.alpha * _audioMult : 0, freezing, _lf, wind.force < -2.60);
   if (gState !== 'playing') return;
   updateWind();
   updatePlayer();
@@ -3715,6 +3728,72 @@ function drawResearchInterior() {
     ctx.fillStyle = lr; ctx.fillRect(lx-50, floorY, 100, 40);
   }
 
+  // ── UPPER BALCONY (right side, reachable by ladder at x≈820) ──
+  {
+    const balY  = floorY - 150;  // balcony floor Y
+    const balX  = 680;           // balcony left edge
+    const balW  = IW - balX;     // spans to right wall
+    const ladX  = 820;           // ladder centre X
+    const ladTop = balY;
+    const ladBot = floorY - 3;
+
+    // Underside support beams
+    ctx.fillStyle = '#131828';
+    ctx.fillRect(balX, balY + 8, balW, 14);
+    ctx.fillStyle = '#0e1220';
+    for (let bx = balX + 20; bx < IW; bx += 60) {
+      ctx.fillRect(bx - 5, balY + 8, 10, ladBot - balY - 8);
+    }
+
+    // Balcony floor surface
+    ctx.fillStyle = '#1a1e2e';
+    ctx.fillRect(balX, balY - 6, balW, 10);
+    ctx.fillStyle = '#22283c';
+    ctx.fillRect(balX, balY - 6, balW, 3);
+    // Floor tiles on balcony
+    ctx.strokeStyle = '#181c28'; ctx.lineWidth = 0.8;
+    for (let tx = balX; tx < IW; tx += 40) {
+      ctx.beginPath(); ctx.moveTo(tx, balY - 6); ctx.lineTo(tx, balY + 4); ctx.stroke();
+    }
+    // Safety railing
+    ctx.strokeStyle = '#2a3050'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(balX, balY - 14); ctx.lineTo(IW - 4, balY - 14); ctx.stroke();
+    ctx.lineWidth = 1;
+    for (let rx = balX + 10; rx < IW - 4; rx += 18) {
+      ctx.beginPath(); ctx.moveTo(rx, balY - 6); ctx.lineTo(rx, balY - 14); ctx.stroke();
+    }
+    // Railing post caps
+    ctx.fillStyle = '#3a4060';
+    for (let rx = balX + 10; rx < IW - 4; rx += 18) {
+      ctx.fillRect(rx - 1.5, balY - 16, 3, 3);
+    }
+
+    // ── LADDER ──────────────────────────────────────────────
+    // Rails
+    ctx.strokeStyle = '#384060'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(ladX - 8, ladTop); ctx.lineTo(ladX - 8, ladBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ladX + 8, ladTop); ctx.lineTo(ladX + 8, ladBot); ctx.stroke();
+    // Rungs
+    ctx.strokeStyle = '#4a5878'; ctx.lineWidth = 2;
+    for (let ry = ladBot - 10; ry > ladTop; ry -= 14) {
+      ctx.beginPath(); ctx.moveTo(ladX - 8, ry); ctx.lineTo(ladX + 8, ry); ctx.stroke();
+    }
+    // Ladder highlight (worn centre strip)
+    ctx.strokeStyle = 'rgba(180,200,255,0.12)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ladX, ladTop); ctx.lineTo(ladX, ladBot); ctx.stroke();
+
+    // "CLIMB" hint label when player is nearby
+    const hcxB = player.inHouse ? player.inHouse.x + player.inHouse.w / 2 : 0;
+    const pscreenX = IW / 2 + (player.x + player.w / 2 - hcxB);
+    if (Math.abs(pscreenX - ladX) < 40) {
+      const hint = researchFloor === 0 ? 'W  climb up' : 'S  climb down';
+      ctx.fillStyle = 'rgba(180,220,255,0.75)';
+      ctx.font = 'bold 8px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText(hint, ladX, ladTop - 20);
+      ctx.textAlign = 'left';
+    }
+  }
+
   // ── CEILING ────────────────────────────────────────────
   ctx.fillStyle = '#090c14'; ctx.fillRect(0, 0, IW, 48);
   // Ceiling panels
@@ -5176,40 +5255,72 @@ function drawResearchInterior() {
     ctx.textAlign='left';
   }
 
-  // ── PLAYER STICKMAN inside research base ─────────────────
+  // ── PLAYER STICKMAN inside research base (same as outdoor) ──
   {
     const hcx2 = player.inHouse.x + player.inHouse.w / 2;
-    // Map player world-x into interior screen space (center of room = IW/2)
     const psx = IW / 2 + (player.x + player.w / 2 - hcx2);
-    const psy = floorY;
-    const pMoving = Math.abs(player.vx) > 0.3;
-    const pPhase  = pMoving ? (player.walkF / 6) * Math.PI * 2 : 0;
-    const pf = player.facing;
-    const sc2 = '#d8eeff';
+    const psy = floorY - (researchFloor === 1 ? 150 : 0);
+    const pf  = player.facing;
+    const moving = Math.abs(player.vx) > 0.5;
+    const run    = player.sprinting && moving;
+    const phase  = moving ? (player.walkF / 6) * Math.PI * 2 : 0;
+    const bob    = moving ? Math.abs(Math.sin(phase * 2)) * (run ? 2.8 : 1.6) : 0;
+
+    const NY = -11 - bob * (run ? 0.5 : 0.3);
+    const SY =  -4 + bob * (run ? 0.5 : 0.3);
+    const HY =   7 + bob * (run ? 0.7 : 0.5);
+
+    const seg = (ox, oy, a1, l1, a2, l2, lw) => {
+      ctx.lineWidth = lw;
+      const jx = ox + Math.sin(a1)*l1, jy = oy + Math.cos(a1)*l1;
+      const ex = jx + Math.sin(a1+a2)*l2, ey = jy + Math.cos(a1+a2)*l2;
+      ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(jx,jy); ctx.lineTo(ex,ey); ctx.stroke();
+    };
+
+    let rH, lH, rK, lK, rA, lA, rE, lE;
+    if (moving && run) {
+      rH = Math.sin(phase)*0.80;           lH = Math.sin(phase+Math.PI)*0.80;
+      rK = -Math.max(0,-Math.sin(phase))*1.05; lK = -Math.max(0,-Math.sin(phase+Math.PI))*1.05;
+      rA = Math.sin(phase+Math.PI)*0.70-0.05;  lA = Math.sin(phase)*0.70+0.15;
+      rE = 0.40+Math.abs(Math.sin(phase+Math.PI))*0.42; lE = 0.40+Math.abs(Math.sin(phase))*0.42;
+    } else if (moving) {
+      rH = Math.sin(phase)*0.52;           lH = Math.sin(phase+Math.PI)*0.52;
+      rK = -Math.max(0,-Math.sin(phase))*0.74; lK = -Math.max(0,-Math.sin(phase+Math.PI))*0.74;
+      rA = Math.sin(phase+Math.PI)*0.38-0.15;  lA = Math.sin(phase)*0.38+0.30;
+      rE = 0.16+Math.abs(Math.sin(phase+Math.PI))*0.22; lE = 0.16+Math.abs(Math.sin(phase))*0.22;
+    } else {
+      rH=0.04; rK=-0.09; lH=-0.04; lK=-0.09;
+      rA=-0.15; rE=0.18; lA=0.30; lE=0.18;
+    }
+
     ctx.save();
     ctx.translate(psx, psy);
     if (pf < 0) ctx.scale(-1, 1);
-    ctx.strokeStyle = sc2; ctx.fillStyle = sc2;
-    ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    // Legs
-    const lSwing = pMoving ? Math.sin(pPhase) * 0.45 : 0.04;
-    ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(Math.sin(lSwing)*8 - 3, 0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(Math.sin(lSwing + Math.PI)*8 + 3, 0); ctx.stroke();
-    // Body
-    ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(0, -4); ctx.stroke();
-    // Arms
-    const aSwing = pMoving ? Math.sin(pPhase + Math.PI) * 0.35 : -0.15;
-    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(Math.sin(aSwing)*9 - 7, -9); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(Math.sin(aSwing + Math.PI)*9 + 7, -9); ctx.stroke();
-    // Torus head (donut, same as outdoor character)
-    ctx.fillStyle = sc2;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = C.text; ctx.fillStyle = C.text;
+
+    const UL=10,LL=9,UA=9,LA=8;
+    seg(0,HY, rH,UL, rK,LL, 2.4);
+    seg(0,SY, rA,UA, rE,LA, 2.3);
+    ctx.lineWidth=2.9; ctx.beginPath(); ctx.moveTo(0,NY); ctx.lineTo(0,HY); ctx.stroke();
+    seg(0,HY, lH,UL, lK,LL, 2.4);
+    seg(0,SY, lA,UA, lE,LA, 2.3);
+
+    // Torus head
+    const HCY = NY - 8;
+    ctx.fillStyle = C.text;
     ctx.beginPath();
-    ctx.arc(0, -26, 8, 0, Math.PI*2, false);
-    ctx.arc(0, -26, 5, 0, Math.PI*2, true);
+    ctx.arc(0,HCY,8,0,Math.PI*2,false);
+    ctx.arc(0,HCY,5,0,Math.PI*2,true);
     ctx.fill('evenodd');
-    ctx.strokeStyle = sc2; ctx.lineWidth = 1.8;
-    ctx.beginPath(); ctx.arc(0, -26, 8, 0, Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(0, -26, 5, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle=C.text; ctx.lineWidth=1.8;
+    ctx.beginPath(); ctx.arc(0,HCY,8,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,HCY,5,0,Math.PI*2); ctx.stroke();
+
+    // Scarf (no wind indoors — hangs still)
+    ctx.strokeStyle='#cc2020'; ctx.lineWidth=3.5;
+    ctx.beginPath(); ctx.moveTo(-2,NY); ctx.quadraticCurveTo(4,NY+3,6,NY+9); ctx.stroke();
+
     ctx.restore();
   }
 
