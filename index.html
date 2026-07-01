@@ -4106,6 +4106,326 @@ function drawResearchInterior() {
   ctx.fillStyle='#44220a'; ctx.font='bold 6px Courier New'; ctx.textAlign='center';
   ctx.fillText('NOTICE BOARD',nbX+nbW/2,nbY+nbH+10);
 
+  // ── SECURITY CAMERAS (ceiling-mounted, rotating) ──────────────
+  for (const [camPx, camSide] of [[140, 1], [IW - 140, -1]]) {
+    const camAngle = Math.sin(f * 0.007 + (camSide > 0 ? 0 : Math.PI)) * 0.55;
+    // Bracket
+    ctx.fillStyle = '#1a1e2a'; ctx.fillRect(camPx - 7, 42, 14, 7);
+    ctx.fillStyle = '#22283a'; ctx.fillRect(camPx - 5, 48, 10, 5);
+    // Rotating camera body
+    ctx.save();
+    ctx.translate(camPx, 55);
+    ctx.rotate(camAngle);
+    ctx.fillStyle = '#0e1118';
+    ctx.beginPath(); ctx.roundRect(-9, -5, 18, 11, 2); ctx.fill();
+    ctx.strokeStyle = '#1e2435'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.roundRect(-9, -5, 18, 11, 2); ctx.stroke();
+    // Lens
+    ctx.fillStyle = isVoidNow ? '#330000' : '#001a2e';
+    ctx.beginPath(); ctx.arc(7, 0, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = isVoidNow ? `rgba(255,60,0,${0.5+Math.sin(f*0.3)*0.4})` : `rgba(40,130,210,${0.5+Math.sin(f*0.05)*0.2})`;
+    ctx.beginPath(); ctx.arc(7, 0, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(180,220,255,0.5)'; ctx.beginPath(); ctx.arc(7.6, -0.6, 0.8, 0, Math.PI*2); ctx.fill();
+    // Record LED
+    ctx.fillStyle = (f + camPx) % 80 < 22 ? '#ff1100' : '#1a0000';
+    ctx.beginPath(); ctx.arc(-6, 0, 1.8, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    // Scan cone (faint)
+    const coneA = Math.PI / 2 + camAngle;
+    ctx.fillStyle = isVoidNow ? 'rgba(255,0,0,0.022)' : 'rgba(0,100,255,0.016)';
+    ctx.beginPath(); ctx.moveTo(camPx, 55);
+    ctx.arc(camPx, 55, 95, coneA - 0.38, coneA + 0.38);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // ── VENTILATION GRILLES on side walls ─────────────────────────
+  for (const [vx, vy, vw, vh, lbl] of [
+    [3,        floorY - 218, 64, 38, 'HVAC-L'],
+    [IW - 67,  floorY - 218, 64, 38, 'HVAC-R'],
+  ]) {
+    ctx.fillStyle = '#0b0e18'; ctx.fillRect(vx, vy, vw, vh);
+    ctx.strokeStyle = '#181e2c'; ctx.lineWidth = 1; ctx.strokeRect(vx, vy, vw, vh);
+    ctx.strokeStyle = '#20283a'; ctx.lineWidth = 1.2;
+    for (let vl = 0; vl < 7; vl++) {
+      const lsy = vy + 5 + vl * (vh - 8) / 6;
+      ctx.beginPath(); ctx.moveTo(vx + 3, lsy); ctx.lineTo(vx + vw - 3, lsy); ctx.stroke();
+    }
+    // Airflow shimmer
+    const vPulse = 0.22 + Math.abs(Math.sin(f * 0.04 + vy * 0.01)) * 0.10;
+    ctx.fillStyle = `rgba(80,160,255,${vPulse * 0.07})`;
+    ctx.fillRect(vx + 2, vy + 2, vw - 4, vh - 4);
+    ctx.fillStyle = 'rgba(60,100,150,0.5)'; ctx.font = '5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(lbl, vx + vw/2, vy + vh + 8);
+    ctx.textAlign = 'left';
+  }
+
+  // ── SPECIMEN SHELF UNIT (back-left wall, beside server rack) ──
+  {
+    const shX = 94, shY = floorY - 252, shW = 50, shH = 112;
+    ctx.fillStyle = '#0c0f1a'; ctx.fillRect(shX, shY, shW, shH);
+    ctx.strokeStyle = '#181e2c'; ctx.lineWidth = 1; ctx.strokeRect(shX, shY, shW, shH);
+    // Header
+    ctx.fillStyle = '#0d1528'; ctx.fillRect(shX, shY, shW, 12);
+    ctx.fillStyle = '#3366aa'; ctx.font = 'bold 5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('SPECIMENS', shX + shW/2, shY + 9);
+    ctx.textAlign = 'left';
+    // 3 shelves
+    const vialPalettes = [
+      ['#003366','#220044','#004400','#332200'],
+      ['#440022','#002244','#224400','#003322'],
+      ['#222266','#442200','#224422','#442244'],
+    ];
+    for (let sl = 0; sl < 3; sl++) {
+      const sy2 = shY + 16 + sl * 32;
+      ctx.fillStyle = '#151a2a'; ctx.fillRect(shX + 2, sy2 + 28, shW - 4, 5);
+      ctx.fillStyle = '#1e2438'; ctx.fillRect(shX + 2, sy2 + 27, shW - 4, 2);
+      let ix2 = shX + 4;
+      for (let vi = 0; vi < 4; vi++) {
+        const vc = vialPalettes[sl][vi], vw2 = 8, vh2 = 12 + (vi % 3) * 4;
+        ctx.fillStyle = vc; ctx.fillRect(ix2, sy2 + 28 - vh2, vw2, vh2);
+        // Glowing liquid fill
+        const r2 = parseInt(vc.slice(1,3),16), g2 = parseInt(vc.slice(3,5),16), b2 = parseInt(vc.slice(5,7),16);
+        const lh = vh2 * (0.35 + Math.sin(f * 0.018 + ix2 + sl) * 0.04);
+        ctx.fillStyle = `rgba(${Math.min(r2*3,255)},${Math.min(g2*3,255)},${Math.min(b2*3,255)},0.65)`;
+        ctx.fillRect(ix2, sy2 + 28 - lh, vw2, lh);
+        // Cap
+        ctx.fillStyle = '#222a3a'; ctx.fillRect(ix2 - 1, sy2 + 28 - vh2 - 3, vw2 + 2, 3);
+        // Paper label
+        ctx.fillStyle = 'rgba(220,230,240,0.25)'; ctx.fillRect(ix2 + 1, sy2 + 28 - vh2/2 - 2, vw2 - 2, 4);
+        ix2 += vw2 + 3;
+      }
+    }
+  }
+
+  // ── SCIENTIFIC EQUIPMENT TABLE (right-side floor gap) ─────────
+  {
+    const etX = IW - 162, etY = floorY;
+    // Table surface
+    ctx.fillStyle = '#131620'; ctx.fillRect(etX, etY - 48, 72, 8);
+    ctx.fillStyle = '#1e2234'; ctx.fillRect(etX, etY - 48, 72, 2);
+    ctx.fillStyle = '#0f1218'; ctx.fillRect(etX, etY - 28, 6, 28); ctx.fillRect(etX + 66, etY - 28, 6, 28);
+    ctx.fillStyle = '#111622'; ctx.fillRect(etX + 6, etY - 15, 60, 4);
+
+    // Microscope
+    const mcX = etX + 14, mcY = etY - 48;
+    ctx.fillStyle = '#111520'; ctx.beginPath(); ctx.roundRect(mcX - 8, mcY - 7, 18, 7, 2); ctx.fill();
+    ctx.fillStyle = '#0f1220'; ctx.fillRect(mcX - 2, mcY - 46, 6, 39);
+    ctx.fillStyle = '#0d1018'; ctx.fillRect(mcX - 10, mcY - 34, 12, 6);
+    ctx.fillStyle = '#0e1118'; ctx.beginPath(); ctx.roundRect(mcX - 1, mcY - 62, 4, 18, 1); ctx.fill();
+    ctx.fillStyle = `rgba(100,180,255,${0.4+Math.sin(f*0.06)*0.2})`;
+    ctx.beginPath(); ctx.arc(mcX + 1, mcY - 64, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(200,230,255,0.55)'; ctx.beginPath(); ctx.arc(mcX + 1.8, mcY - 65, 1, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(70,110,170,0.55)'; ctx.font = 'bold 5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('MICRO', mcX + 1, mcY - 70);
+    ctx.textAlign = 'left';
+
+    // Centrifuge
+    const cfX = etX + 50, cfY = etY - 48;
+    ctx.fillStyle = '#0e1118'; ctx.beginPath(); ctx.roundRect(cfX - 12, cfY - 34, 26, 34, 4); ctx.fill();
+    ctx.strokeStyle = '#1c2235'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.roundRect(cfX - 12, cfY - 34, 26, 34, 4); ctx.stroke();
+    ctx.fillStyle = '#151a28'; ctx.beginPath(); ctx.roundRect(cfX - 12, cfY - 34, 26, 8, 4); ctx.fill();
+    ctx.strokeStyle = '#20283a'; ctx.lineWidth = 0.8; ctx.strokeRect(cfX - 12, cfY - 34, 26, 8);
+    const cfSpin = (f * 0.25) % (Math.PI * 2);
+    ctx.strokeStyle = `rgba(60,200,255,${0.5+Math.sin(f*0.12)*0.3})`; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cfX, cfY - 20, 8, cfSpin, cfSpin + Math.PI * 1.4); ctx.stroke();
+    ctx.fillStyle = '#1a2244'; ctx.beginPath(); ctx.arc(cfX, cfY - 20, 3, 0, Math.PI*2); ctx.fill();
+    for (let li = 0; li < 3; li++) {
+      ctx.fillStyle = (f + li * 17) % 70 < 25 ? ['#22ff66','#ffaa00','#4488ff'][li] : '#0a1010';
+      ctx.beginPath(); ctx.arc(cfX - 6 + li * 5, cfY - 6, 1.8, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(60,120,180,0.5)'; ctx.font = 'bold 5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('CNTRFG', cfX, cfY - 42);
+    ctx.textAlign = 'left';
+  }
+
+  // ── WALL CLOCK on back wall (right of main display) ───────────
+  {
+    const clkX = 716, clkY = 252, clkR = 20;
+    ctx.fillStyle = '#080b14';
+    ctx.beginPath(); ctx.arc(clkX, clkY, clkR + 5, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#1e2638'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(clkX, clkY, clkR + 5, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = '#060810';
+    ctx.beginPath(); ctx.arc(clkX, clkY, clkR, 0, Math.PI*2); ctx.fill();
+    // Tick marks
+    ctx.strokeStyle = 'rgba(70,130,210,0.7)'; ctx.lineWidth = 1.2;
+    for (let ti = 0; ti < 12; ti++) {
+      const ta = ti * Math.PI / 6 - Math.PI / 2;
+      const inner = ti % 3 === 0 ? clkR - 6 : clkR - 4;
+      ctx.beginPath();
+      ctx.moveTo(clkX + Math.cos(ta)*inner, clkY + Math.sin(ta)*inner);
+      ctx.lineTo(clkX + Math.cos(ta)*(clkR - 1), clkY + Math.sin(ta)*(clkR - 1));
+      ctx.stroke();
+    }
+    // Animated hands
+    const clkS = (f * 0.5) % 60, clkM = (f * 0.5 / 60) % 60, clkH = (f * 0.5 / 720) % 12;
+    const sA2 = clkS / 60 * Math.PI * 2 - Math.PI / 2;
+    const mA2 = clkM / 60 * Math.PI * 2 - Math.PI / 2;
+    const hA2 = clkH / 12 * Math.PI * 2 - Math.PI / 2;
+    ctx.strokeStyle = '#7799bb'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(clkX, clkY); ctx.lineTo(clkX + Math.cos(hA2)*12, clkY + Math.sin(hA2)*12); ctx.stroke();
+    ctx.strokeStyle = '#99bbdd'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(clkX, clkY); ctx.lineTo(clkX + Math.cos(mA2)*17, clkY + Math.sin(mA2)*17); ctx.stroke();
+    ctx.strokeStyle = '#ff7755'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(clkX, clkY); ctx.lineTo(clkX + Math.cos(sA2)*18, clkY + Math.sin(sA2)*18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(clkX, clkY); ctx.lineTo(clkX - Math.cos(sA2)*5, clkY - Math.sin(sA2)*5); ctx.stroke();
+    ctx.fillStyle = '#ff7755'; ctx.beginPath(); ctx.arc(clkX, clkY, 2, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(100,160,220,0.5)'; ctx.font = 'bold 5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('A.R.S.-7', clkX, clkY + clkR + 12);
+    ctx.textAlign = 'left';
+  }
+
+  // ── EMERGENCY MEDICAL STATION on left wall ─────────────────────
+  {
+    const esX = 3, esY = floorY - 362, esW = 52, esH = 64;
+    ctx.fillStyle = '#1c0404'; ctx.fillRect(esX, esY, esW, esH);
+    ctx.strokeStyle = '#aa2200'; ctx.lineWidth = 1.5; ctx.strokeRect(esX, esY, esW, esH);
+    // Red cross
+    const crossC = isVoidNow ? `rgba(255,60,60,${0.8+Math.sin(f*0.4)*0.2})` : '#cc1100';
+    ctx.fillStyle = crossC;
+    ctx.fillRect(esX + esW/2 - 3, esY + 8, 6, 18);
+    ctx.fillRect(esX + esW/2 - 9, esY + 14, 18, 6);
+    ctx.fillStyle = '#aa1100'; ctx.font = 'bold 5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('EMERGENCY', esX + esW/2, esY + 36);
+    ctx.fillText('MEDICAL', esX + esW/2, esY + 43);
+    ctx.fillText('KIT', esX + esW/2, esY + 50);
+    ctx.fillStyle = '#661100'; ctx.font = '4px Courier New';
+    ctx.fillText('AED INSIDE', esX + esW/2, esY + 58);
+    if (isVoidNow && f % 30 < 15) {
+      ctx.fillStyle = 'rgba(255,0,0,0.12)'; ctx.fillRect(esX - 2, esY - 2, esW + 4, esH + 4);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  // ── WATER COOLER (just right of break area) ───────────────────
+  {
+    const wcX = 126, wcY = floorY;
+    // Inverted bottle
+    ctx.fillStyle = '#06182a';
+    ctx.beginPath(); ctx.roundRect(wcX - 7, wcY - 68, 16, 26, 4); ctx.fill();
+    ctx.fillStyle = 'rgba(0,120,220,0.32)'; ctx.fillRect(wcX - 6, wcY - 58, 14, 14);
+    ctx.strokeStyle = '#0a2040'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.roundRect(wcX - 7, wcY - 68, 16, 26, 4); ctx.stroke();
+    // Body
+    ctx.fillStyle = '#0c1420'; ctx.beginPath(); ctx.roundRect(wcX - 9, wcY - 42, 20, 42, 2); ctx.fill();
+    ctx.strokeStyle = '#162030'; ctx.lineWidth = 0.8; ctx.strokeRect(wcX - 9, wcY - 42, 20, 42);
+    // Hot/cold taps
+    ctx.fillStyle = '#550000'; ctx.fillRect(wcX - 7, wcY - 26, 7, 5);
+    ctx.fillStyle = '#003355'; ctx.fillRect(wcX + 2, wcY - 26, 7, 5);
+    ctx.strokeStyle = '#773322'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.arc(wcX - 3, wcY - 26, 3, 0.5, Math.PI - 0.5); ctx.stroke();
+    ctx.strokeStyle = '#225588'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.arc(wcX + 6, wcY - 26, 3, 0.5, Math.PI - 0.5); ctx.stroke();
+    // Cup holder + paper cup
+    ctx.fillStyle = '#141e2c'; ctx.fillRect(wcX - 8, wcY - 20, 18, 20);
+    ctx.fillStyle = '#eeeef8'; ctx.beginPath(); ctx.moveTo(wcX - 2, wcY); ctx.lineTo(wcX + 6, wcY); ctx.lineTo(wcX + 5, wcY - 10); ctx.lineTo(wcX - 1, wcY - 10); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,100,200,0.4)'; ctx.fillRect(wcX - 1, wcY - 5, 7, 5);
+    // Drip animation
+    if (f % 100 < 50) {
+      const dp2 = (f % 100) / 100;
+      ctx.fillStyle = 'rgba(0,140,220,0.5)';
+      ctx.beginPath(); ctx.arc(wcX + 2, wcY - 21 + dp2 * 14, 1.2, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(60,120,180,0.45)'; ctx.font = '5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('H₂O', wcX + 1, wcY - 50);
+    ctx.textAlign = 'left';
+  }
+
+  // ── RADIATION CAUTION SIGN (back wall, left section) ──────────
+  {
+    const rsX = 94, rsY = 158, rsW = 52, rsH = 36;
+    ctx.fillStyle = '#181100'; ctx.fillRect(rsX, rsY, rsW, rsH);
+    ctx.strokeStyle = '#aa8800'; ctx.lineWidth = 1.5; ctx.strokeRect(rsX, rsY, rsW, rsH);
+    // Trefoil
+    const tcX = rsX + 16, tcY = rsY + rsH/2, tcR = 10;
+    ctx.fillStyle = '#ccaa00';
+    for (let sec = 0; sec < 3; sec++) {
+      const sa3 = sec * (Math.PI * 2 / 3) - Math.PI / 2;
+      ctx.beginPath(); ctx.moveTo(tcX, tcY);
+      ctx.arc(tcX, tcY, tcR, sa3 + 0.28, sa3 + Math.PI * 2/3 - 0.28);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = '#181100'; ctx.beginPath(); ctx.arc(tcX, tcY, 2.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#aa8800'; ctx.font = 'bold 5px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText('CAUTION', rsX + 30, rsY + 12);
+    ctx.fillText('RAD ZONE', rsX + 30, rsY + rsH - 6);
+    if (isVoidNow) {
+      ctx.fillStyle = `rgba(255,200,0,${0.05+Math.sin(f*0.15)*0.04})`;
+      ctx.fillRect(rsX - 3, rsY - 3, rsW + 6, rsH + 6);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  // ── VOID STORM RESEARCH POSTER (below notice board) ───────────
+  {
+    const poX = 680, poY = 158, poW = 100, poH = 74;
+    ctx.fillStyle = '#141828'; ctx.fillRect(poX, poY, poW, poH);
+    ctx.strokeStyle = '#242a42'; ctx.lineWidth = 1; ctx.strokeRect(poX, poY, poW, poH);
+    ctx.fillStyle = '#0c1438'; ctx.fillRect(poX, poY, poW, 12);
+    ctx.fillStyle = '#4488cc'; ctx.font = 'bold 5px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('VOID STORM THEORY', poX + poW/2, poY + 9);
+    ctx.textAlign = 'left';
+    // Animated spiral
+    const scX = poX + 32, scY = poY + 44;
+    ctx.strokeStyle = 'rgba(80,100,255,0.55)'; ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    for (let ang = 0.5; ang < Math.PI * 4; ang += 0.15) {
+      const r = ang * 2;
+      const px3 = scX + Math.cos(ang - f * 0.008) * r;
+      const py3 = scY + Math.sin(ang - f * 0.008) * r;
+      ang <= 0.65 ? ctx.moveTo(px3, py3) : ctx.lineTo(px3, py3);
+    }
+    ctx.stroke();
+    ctx.fillStyle = `rgba(100,60,255,${0.5+Math.sin(f*0.05)*0.2})`;
+    ctx.beginPath(); ctx.arc(scX, scY, 4, 0, Math.PI*2); ctx.fill();
+    // Annotations
+    ctx.strokeStyle = 'rgba(100,160,220,0.35)'; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(scX + 12, scY - 8); ctx.lineTo(scX + 24, scY - 14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(scX + 4, scY + 13); ctx.lineTo(scX + 16, scY + 20); ctx.stroke();
+    ctx.fillStyle = 'rgba(130,170,220,0.65)'; ctx.font = '4px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText('eye', scX + 25, scY - 11);
+    ctx.fillText('outer band', scX + 17, scY + 23);
+    // Data graph (right half)
+    const gX2 = poX + 64, gY2 = poY + 20;
+    ctx.strokeStyle = 'rgba(40,80,180,0.28)'; ctx.lineWidth = 0.5;
+    for (let gl = 0; gl <= 3; gl++) { ctx.beginPath(); ctx.moveTo(gX2, gY2 + gl*12); ctx.lineTo(gX2 + 30, gY2 + gl*12); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(0,200,160,0.7)'; ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    for (let gx3 = 0; gx3 <= 30; gx3 += 2) {
+      const gy3 = gY2 + 18 + Math.sin(gx3 * 0.28 - f * 0.015) * 8 + Math.cos(gx3 * 0.12) * 3;
+      gx3 === 0 ? ctx.moveTo(gX2 + gx3, gy3) : ctx.lineTo(gX2 + gx3, gy3);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(100,160,200,0.5)'; ctx.font = '4px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText('ΔP/Δt', gX2, gY2 + 42);
+    ctx.textAlign = 'left';
+  }
+
+  // ── DATA CABLE CONDUIT along mid-wall (animated pulses) ───────
+  {
+    const ccy = floorY - 126;
+    ctx.fillStyle = '#111824'; ctx.fillRect(92, ccy - 4, IW - 180, 8);
+    ctx.strokeStyle = '#181e2e'; ctx.lineWidth = 0.8; ctx.strokeRect(92, ccy - 4, IW - 180, 8);
+    // Rightward data pulses
+    for (let dp = 0; dp < 6; dp++) {
+      const dpt = ((f * 2.5 + dp * 55) % (IW - 185));
+      ctx.fillStyle = `rgba(0,180,255,${0.55 - dp*0.07})`;
+      ctx.fillRect(92 + dpt, ccy - 2, 10, 4);
+    }
+    // Leftward return pulses
+    for (let dp = 0; dp < 4; dp++) {
+      const dpt = IW - 92 - ((f * 1.8 + dp * 70) % (IW - 185));
+      ctx.fillStyle = `rgba(0,255,120,${0.38 - dp*0.07})`;
+      ctx.fillRect(dpt, ccy - 1, 6, 2);
+    }
+    // Mount clips
+    ctx.fillStyle = '#1e2a3a';
+    for (let cc3 = 100; cc3 < IW - 100; cc3 += 80) {
+      ctx.fillRect(cc3, ccy - 6, 6, 12);
+      ctx.strokeStyle = '#141e2a'; ctx.lineWidth = 0.5; ctx.strokeRect(cc3, ccy - 6, 6, 12);
+    }
+  }
+
   // ── EXIT CHECK WINDOW (right wall) ──────────────────────────
   // Tells the player at a glance whether it's safe to step outside.
   {
