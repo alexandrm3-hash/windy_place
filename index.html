@@ -122,6 +122,24 @@
 #spawn-menu button.sn-metal    { color: #aabbcc; }
 #spawn-menu button.sn-bunker   { color: #ffcc44; }
 #spawn-menu button.sn-research { color: #44ffcc; }
+#anim-btn {
+  position: absolute;
+  bottom: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  padding: 4px 14px;
+  background: rgba(0,0,0,0.60);
+  color: rgba(100,220,180,0.85);
+  border: 1px solid rgba(100,220,180,0.30);
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 10;
+  display: none;
+}
+#anim-btn:hover { background: rgba(0,0,0,0.80); }
 </style>
 
 <div id="spawn-btn" onclick="toggleSpawnMenu()">🏠 SPAWN</div>
@@ -131,6 +149,7 @@
   <button class="sn-bunker"   onclick="spawnHouseType('bunker');closeSpawnMenu()">🛡 Bunker</button>
   <button class="sn-research" onclick="spawnHouseType('research');closeSpawnMenu()">🔬 Research base</button>
 </div>
+<div id="anim-btn" onclick="toggleAnimPicker()">🎬 ANIM TEST</div>
 <div id="test-btn" onclick="toggleTestMenu()">⚡ WIND</div>
 <div id="test-menu">
   <button onclick="forceWind(0);closeTestMenu()">CALM</button>
@@ -299,6 +318,19 @@ function baseGroundY(wx) {
 
 // ── Global state ─────────────────────────────────────────
 let gState, player, wind, cam, particles, snowflakes, frame;
+let audioMuted = false;
+// ── Anim-picker state ────────────────────────────────────────
+const animPicker = {
+  open: false,
+  desk: 0,           // 0-4 selected desk
+  anim: 0,           // index into ANIM_LIST
+  forced: {},        // deskIdx → animName override (null = free)
+};
+const ANIM_LIST = ['type','read','write','stretch','ring','talk','nodoff','sleep','wakeup'];
+const ANIM_LABELS = ['Typing','Reading','Writing','Stretching','Phone ringing','Phone talking','Nodding off','Sleeping','Waking up'];
+function toggleAnimPicker() {
+  animPicker.open = !animPicker.open;
+}
 let researchPanic = []; // per-worker panic state for void storm running animation
 let secretTierTimer = 0;   // frames to show the secret tier unlock message
 let terrainDrama = 0;      // 0–1+ smoothly tracks tier; controls slope steepness
@@ -433,8 +465,30 @@ function init() {
 const keys = {};
 window.addEventListener('keydown', e => {
   WindAudio.init();
+  // Anim-picker navigation (consumes input while open)
+  if (animPicker.open) {
+    if (e.code === 'ArrowLeft')  { animPicker.desk = (animPicker.desk + 4) % 5; e.preventDefault(); return; }
+    if (e.code === 'ArrowRight') { animPicker.desk = (animPicker.desk + 1) % 5; e.preventDefault(); return; }
+    if (e.code === 'ArrowUp')    { animPicker.anim = (animPicker.anim + ANIM_LIST.length - 1) % ANIM_LIST.length; e.preventDefault(); return; }
+    if (e.code === 'ArrowDown')  { animPicker.anim = (animPicker.anim + 1) % ANIM_LIST.length; e.preventDefault(); return; }
+    if (e.code === 'Enter') {
+      animPicker.forced[animPicker.desk] = ANIM_LIST[animPicker.anim];
+      animPicker.open = false;
+      e.preventDefault(); return;
+    }
+    if (e.code === 'Escape') { animPicker.open = false; e.preventDefault(); return; }
+    if (e.code === 'KeyC') {
+      // C = clear forced animation on selected desk
+      animPicker.forced[animPicker.desk] = null;
+      e.preventDefault(); return;
+    }
+  }
   keys[e.code] = true;
   if (e.code === 'KeyR') init();
+  if (e.code === 'KeyM' && !e.repeat) {
+    audioMuted = !audioMuted;
+    WindAudio.setMute(audioMuted);
+  }
   if (e.code === 'KeyE' && gState === 'playing' && !e.repeat) handleEnterExit();
   if (gState === 'playing' && !e.repeat) handleChallengeKey(e.code);
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))
@@ -442,6 +496,16 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 window.addEventListener('click', () => WindAudio.init(), { once: true });
+canvas.addEventListener('click', e => {
+  const r = canvas.getBoundingClientRect();
+  const cx = (e.clientX - r.left) * (canvas.width / r.width);
+  const cy = (e.clientY - r.top)  * (canvas.height / r.height);
+  // Mute button: x 14-178, y 55-77
+  if (cx >= 14 && cx <= 178 && cy >= 55 && cy <= 77) {
+    audioMuted = !audioMuted;
+    WindAudio.setMute(audioMuted);
+  }
+});
 const goLeft  = () => keys['ArrowLeft']  || keys['KeyA'];
 const goRight = () => keys['ArrowRight'] || keys['KeyD'];
 const doJump  = () => keys['ArrowUp']    || keys['KeyW'] || keys['Space'];
@@ -2714,7 +2778,6 @@ function drawResearchInterior_OLD_REPLACED() { // dead code
     ctx.lineTo(scrX + scrW*0.05, scrY + 14);
     ctx.closePath(); ctx.fill();
 
-
     // ── Animated researcher stickman ─────────────────────────
     {
       const si    = deskIdx;
@@ -2727,6 +2790,10 @@ function drawResearchInterior_OLD_REPLACED() { // dead code
       // ── State machine: 720-frame activity cycle (~12 s) ─────
       const cyc = sT % 720;
       let act;
+      // Check for forced animation override from the anim picker
+      if (animPicker.forced[si]) {
+        act = animPicker.forced[si];
+      } else
       if      (si === 2) act = cyc<150?'type':cyc<250?'ring':cyc<490?'talk':cyc<548?'hangup':'type';
       else if (si === 3) act = cyc<480?'type':cyc<594?'stretch':'type';
       else if (si === 1) act = cyc<360?'type':cyc<540?'write':'read';
@@ -2904,6 +2971,27 @@ function drawResearchInterior_OLD_REPLACED() { // dead code
       if (mouth>0.05) {
         ctx.strokeStyle='#080c18'; ctx.lineWidth=1;
         ctx.beginPath(); ctx.arc(hx+fac*1.2,hy+2.8,2.4*mouth,0.1,Math.PI-0.1); ctx.stroke();
+      }
+
+      // ── Anim-picker selection arrow ───────────────────────────
+      if (animPicker.open && animPicker.desk === si) {
+        const arrowX = stX + (stX + hx - stX) * 0; // above head
+        const arrowTip = hy - 18 + Math.sin(frame * 0.12) * 3; // gentle bob
+        ctx.fillStyle = 'rgba(100,230,180,0.92)';
+        ctx.beginPath();
+        ctx.moveTo(stX,       arrowTip);
+        ctx.lineTo(stX - 6,   arrowTip - 10);
+        ctx.lineTo(stX + 6,   arrowTip - 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(60,200,150,0.70)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(stX, arrowTip);
+        ctx.lineTo(stX - 6, arrowTip - 10);
+        ctx.lineTo(stX + 6, arrowTip - 10);
+        ctx.closePath();
+        ctx.stroke();
       }
 
       // ── ZZZ sleep bubbles ─────────────────────────────────────
@@ -3125,76 +3213,319 @@ function drawResearchInterior_OLD_REPLACED() { // dead code
 }
 
 // ── Draw: Research Base Interior ─────────────────────────
+// ── Anim Picker overlay (drawn on top of research interior) ──
+function drawAnimPicker() {
+  const pw = 240, ph = 36 + ANIM_LIST.length * 18 + 32;
+  const px = (W - pw) / 2, py = H / 2 - ph / 2;
+
+  // Panel background
+  ctx.fillStyle = 'rgba(4,10,22,0.92)';
+  rrect(px, py, pw, ph, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(100,220,180,0.35)'; ctx.lineWidth = 1.5;
+  rrect(px, py, pw, ph, 6); ctx.stroke();
+
+  // Title bar
+  ctx.fillStyle = 'rgba(20,60,50,0.80)';
+  rrect(px, py, pw, 22, 6); ctx.fill();
+  ctx.fillStyle = 'rgba(100,230,180,0.90)'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('🎬  ANIMATION TEST', px + pw / 2, py + 14);
+
+  // Desk selector row
+  const deskNames = ['DESK 1','DESK 2','DESK 3','DESK 4','DESK 5'];
+  const cellW = pw / 5;
+  for (let d = 0; d < 5; d++) {
+    const cx = px + d * cellW + cellW / 2;
+    const cy = py + 33;
+    const sel = d === animPicker.desk;
+    ctx.fillStyle = sel ? 'rgba(80,200,160,0.28)' : 'rgba(255,255,255,0.04)';
+    rrect(px + d * cellW + 2, py + 24, cellW - 4, 18, 3); ctx.fill();
+    if (sel) {
+      ctx.strokeStyle = 'rgba(100,230,180,0.60)'; ctx.lineWidth = 1;
+      rrect(px + d * cellW + 2, py + 24, cellW - 4, 18, 3); ctx.stroke();
+    }
+    ctx.fillStyle = sel ? 'rgba(140,255,200,0.95)' : 'rgba(120,160,150,0.65)';
+    ctx.font = sel ? 'bold 7px Courier New' : '7px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(deskNames[d], cx, cy);
+    // forced-anim indicator dot
+    if (animPicker.forced[d]) {
+      ctx.fillStyle = 'rgba(100,255,180,0.80)';
+      ctx.beginPath(); ctx.arc(cx, cy + 6, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Separator
+  ctx.strokeStyle = 'rgba(100,220,180,0.18)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(px + 8, py + 44); ctx.lineTo(px + pw - 8, py + 44); ctx.stroke();
+
+  // Animation list
+  for (let ai = 0; ai < ANIM_LIST.length; ai++) {
+    const ly = py + 52 + ai * 18;
+    const sel = ai === animPicker.anim;
+    if (sel) {
+      ctx.fillStyle = 'rgba(80,200,160,0.22)';
+      rrect(px + 6, ly - 11, pw - 12, 16, 3); ctx.fill();
+      ctx.strokeStyle = 'rgba(100,230,180,0.45)'; ctx.lineWidth = 1;
+      rrect(px + 6, ly - 11, pw - 12, 16, 3); ctx.stroke();
+    }
+    // Arrow cursor
+    ctx.fillStyle = sel ? 'rgba(120,255,200,0.95)' : 'rgba(80,120,110,0.50)';
+    ctx.font = sel ? 'bold 9px Courier New' : '9px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(sel ? '▶' : ' ', px + 12, ly);
+    ctx.font = sel ? 'bold 9px Courier New' : '9px Courier New';
+    ctx.fillText(ANIM_LABELS[ai], px + 26, ly);
+    // Show if currently forced on selected desk
+    if (animPicker.forced[animPicker.desk] === ANIM_LIST[ai]) {
+      ctx.fillStyle = 'rgba(100,255,180,0.70)';
+      ctx.font = '7px Courier New'; ctx.textAlign = 'right';
+      ctx.fillText('● ACTIVE', px + pw - 10, ly);
+    }
+  }
+
+  // Footer hints
+  const fy = py + ph - 14;
+  ctx.fillStyle = 'rgba(80,140,120,0.60)'; ctx.font = '7px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('← → desk   ↑ ↓ anim   ENTER apply   C clear   ESC close', px + pw / 2, fy);
+
+  ctx.textAlign = 'left';
+}
+
 function drawResearchInterior() {
   const IW = W, IH = H;
   const isVoidNow = wind.force < -2.60;
   const f = frame;
 
-  // ── helper: mini seated stickman ───────────────────────
-  function researcher(rx, ry, facing, screenDir, bobOffset, variant) {
-    // rx,ry = feet position; facing = 1 right / -1 left; screenDir = direction arms point to monitor
-    const bob  = Math.sin(f * 0.04 + bobOffset) * 1.0;
+  // ── helper: animated seated researcher ──────────────────
+  function researcher(rx, ry, fac, sd, bobOffset, variant, deskIndex) {
+    const sT   = f + deskIndex * 173;
+    const bob  = Math.sin(sT * 0.038) * 0.7;
+    const cyc  = sT % 720;
     const type = variant % 4;
-    const sc = '#d0dff0'; ctx.strokeStyle = sc; ctx.fillStyle = sc;
-    ctx.lineWidth = 2.0; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    // thighs horizontal
-    ctx.beginPath(); ctx.moveTo(rx - 8, ry - 10); ctx.lineTo(rx - 8, ry); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(rx + 8, ry - 10); ctx.lineTo(rx + 8, ry); ctx.stroke();
-    // body (hunched toward screen)
-    const hx = screenDir * 4;
-    ctx.beginPath(); ctx.moveTo(rx, ry - 10); ctx.lineTo(rx + hx, ry - 24 + bob); ctx.stroke();
-    // arms reaching to screen
-    const armReach = screenDir * 20;
-    ctx.beginPath(); ctx.moveTo(rx + hx, ry - 20 + bob); ctx.lineTo(rx + hx + armReach, ry - 16 + bob); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(rx + hx, ry - 20 + bob); ctx.lineTo(rx + hx + armReach - screenDir*4, ry - 12 + bob); ctx.stroke();
-    // torus head — donut ring, same style as the player character
-    const rhx = rx + hx, rhy = ry - 30 + bob;
-    ctx.fillStyle = sc;
+
+    // Activity state machine (same logic as before)
+    let act;
+    if (animPicker.forced[deskIndex]) {
+      act = animPicker.forced[deskIndex];
+    } else if (deskIndex === 2) {
+      act = cyc<150?'type':cyc<250?'ring':cyc<490?'talk':cyc<548?'hangup':'type';
+    } else if (deskIndex === 3) {
+      act = cyc<480?'type':cyc<594?'stretch':'type';
+    } else if (deskIndex === 1) {
+      act = cyc<360?'type':cyc<540?'write':'read';
+    } else if (deskIndex === 0) {
+      const sc2 = sT % 15000;
+      act = sc2<7000?(cyc<560?'type':'read'):sc2<7240?'nodoff':sc2<14400?'sleep':'wakeup';
+    } else {
+      act = cyc<560?'type':cyc<692?'read':'type';
+    }
+
+    // Pose parameters
+    // ── Exact Y levels from desk geometry (ry = floor) ──────
+    // Chair seat top: ry-28  Desk panel: ry-44 to ry-32
+    const KBD  = ry - 44;  // keyboard / desk surface
+    const SHIP = ry - 50;  // shoulder (just above desk panel)
+    const HIPY = ry - 28;  // hip on seat
+    const HEADY = ry - 60; // head centre
+
+    // Per-activity hand target positions (absolute screen coords)
+    // lhx/lhy = left hand,  rhx/rhy = right hand
+    let lhx = rx + sd*12 - 3, lhy = KBD;
+    let rhx = rx + sd*12 + 3, rhy = KBD;
+    let headLean = sd * 3;   // head X lean toward screen
+    let headDroop = 0;       // head Y extra droop (sleep)
+    let mouth=0, showPhone=false, showPad=false;
+
+    if (act==='type') {
+      // Alternating finger lift: 0 (resting on key) to -3 (lifted)
+      lhy = KBD - Math.max(0, Math.sin(sT*0.42))   * 3;
+      rhy = KBD - Math.max(0, Math.sin(sT*0.42+Math.PI)) * 3;
+      // Occasional head nod to re-read screen
+      if ((sT%180)<16) headLean += sd*2;
+    } else if (act==='read') {
+      lhx=rx+sd*8-3; rhx=rx+sd*16+3;
+      rhy = KBD - Math.abs(Math.sin(sT*0.10)) * 2; // mouse scroll
+      headLean = sd*1;
+    } else if (act==='ring') {
+      headLean = sd*1 + Math.sin(sT*0.38)*3; // startled look-up
+    } else if (act==='talk') {
+      // Right arm raises to ear
+      rhx = rx + sd*2; rhy = SHIP - 8 + Math.sin(sT*0.19)*1.5;
+      lhx = rx + sd*10; lhy = KBD + Math.sin(sT*0.19)*1.5; // jotting
+      headLean = sd*5; // tilt head to shoulder holding phone
+      mouth=Math.max(0,Math.sin(sT*0.33)); showPhone=true;
+    } else if (act==='hangup') {
+      const ht=Math.min(1,Math.max(0,(cyc-490)/58));
+      // Right arm lowers from ear back to keyboard
+      rhx = rx + sd*2 + (rx + sd*12 + 3 - (rx+sd*2))*ht;
+      rhy = (SHIP-8) + (KBD - (SHIP-8))*ht;
+      lhx = rx + sd*10; lhy = KBD;
+      headLean = sd*5*(1-ht) + sd*3*ht;
+      showPhone = ht < 0.65;
+    } else if (act==='stretch') {
+      const sw=Math.sin(Math.max(0,(cyc-480))/114*Math.PI); // 0→1→0
+      lhx = rx - 18*sw; lhy = SHIP - 18*sw; // arms raise and spread
+      rhx = rx + 18*sw; rhy = SHIP - 18*sw;
+      headLean = 0; headDroop = -4*sw; // head tips back during stretch
+    } else if (act==='write') {
+      lhx=rx+sd*8-4; lhy=KBD;
+      rhx=rx+sd*14+4; rhy=KBD - Math.abs(Math.sin(sT*0.23))*3; // pen moving
+      headLean=sd*4; headDroop=6; // looking down at notepad
+      showPad=true;
+    } else if (act==='nodoff') {
+      const nd=Math.min(1,(sT%15000-7000)/240); // 0→1 as they nod off
+      lhx=rx+sd*12-3; lhy=KBD+(nd*4);   // arms slowly relax onto desk
+      rhx=rx+sd*12+3; rhy=KBD+(nd*4);
+      headDroop=nd*16; headLean=sd*(3-nd*3); // head droops forward
+    } else if (act==='sleep') {
+      lhx=rx+sd*14-5; lhy=KBD+3; // arms flat on desk
+      rhx=rx+sd*14+5; rhy=KBD+3;
+      headDroop=16; headLean=sd*1; // head resting on desk
+    } else if (act==='wakeup') {
+      const wu=Math.min(1,(sT%15000-14400)/140);
+      const snap=wu<0.25?wu/0.25:1-(wu-0.25)/0.75*0.15;
+      lhx=rx+sd*14-5+(rx+sd*12-3-(rx+sd*14-5))*snap;
+      lhy=KBD+3-3*snap;
+      rhx=rx+sd*14+5+(rx+sd*12+3-(rx+sd*14+5))*snap;
+      rhy=KBD+3-3*snap;
+      headDroop=16*(1-snap)-5*Math.sin(snap*Math.PI); // snap up then settle
+      headLean=sd*(1+snap*2);
+    }
+
+    // ─────────────────────────────────────────────────────────
+    ctx.strokeStyle=sc; ctx.fillStyle=sc;
+    ctx.lineWidth=2.0; ctx.lineCap='round'; ctx.lineJoin='round';
+
+    // ── Legs: only the shins visible below the desk panel ───
+    // Desk panel occupies ry-44 to ry-32; legs below ry-32 are visible.
+    // Knees at ry-20 (bent seated position), feet at ry-4.
+    // Keep very narrow: 4px either side of centre.
+    const kneeY = ry - 20, footY = ry - 4;
+    // Sleep / nodoff: feet tucked further back (relaxed)
+    const legVisible = (act !== 'sleep');
+    if (legVisible) {
+      ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(rx-4, kneeY); ctx.lineTo(rx-4, footY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx+4, kneeY); ctx.lineTo(rx+4, footY); ctx.stroke();
+      // Small feet pointing in screen direction
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(rx-4, footY); ctx.lineTo(rx-4+sd*4, footY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx+4, footY); ctx.lineTo(rx+4+sd*4, footY); ctx.stroke();
+    }
+
+    // ── Torso: hip (HIPY) to shoulder (SHIP), lean toward screen
+    ctx.lineWidth=2.2;
+    const shX = rx + sd*3, shY = SHIP + bob;
+    ctx.beginPath(); ctx.moveTo(rx, HIPY+bob); ctx.lineTo(shX, shY); ctx.stroke();
+
+    // ── Arms: reach toward keyboard on desk surface ──────────
+    // Both arms go forward (sd) and slightly inward to keyboard
+    ctx.lineWidth=1.8;
+
+    // Convert abstract pose params into actual hand positions
+    // Default: both hands resting on keyboard at kbdY, spread a little
+    let lhx = rx + sd*14 - 4,  lhy = kbdY + lHandY;
+    let rhx = rx + sd*14 + 4,  rhy = kbdY + rHandY;
+
+    // ── Arms: quadratic curves shoulder → elbow → hand ──────
+    // Elbow control point: partway between shoulder and hand, pulled inward
+    ctx.lineWidth=1.8;
+    const lElbX=(shX+lhx)*0.5 + sd*1, lElbY=(shY+lhy)*0.5 + 2;
+    const rElbX=(shX+rhx)*0.5 + sd*1, rElbY=(shY+rhy)*0.5 + (act==='talk'?-3:2);
+    ctx.beginPath(); ctx.moveTo(shX,shY); ctx.quadraticCurveTo(lElbX,lElbY,lhx,lhy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(shX,shY); ctx.quadraticCurveTo(rElbX,rElbY,rhx,rhy); ctx.stroke();
+
+    // Typing key-tap flash (hands lift above keyboard)
+    if (act==='type') {
+      if (lhy < KBD-0.5) { ctx.fillStyle='rgba(60,150,255,0.20)'; ctx.beginPath(); ctx.arc(lhx,KBD,4,0,Math.PI*2); ctx.fill(); }
+      if (rhy < KBD-0.5) { ctx.fillStyle='rgba(60,150,255,0.20)'; ctx.beginPath(); ctx.arc(rhx,KBD,4,0,Math.PI*2); ctx.fill(); }
+      ctx.strokeStyle=sc; ctx.fillStyle=sc;
+    }
+
+    // Phone handset
+    if (showPhone) {
+      ctx.save(); ctx.translate(rhx, rhy); ctx.rotate(-0.9*sd);
+      ctx.fillStyle='#252538'; ctx.fillRect(-2,-9,4,14);
+      ctx.fillStyle='#353555'; ctx.fillRect(-1,-8,2,3); ctx.fillRect(-1,3,2,3);
+      ctx.restore(); ctx.strokeStyle=sc;
+    }
+
+    // Notepad + pen
+    if (showPad) {
+      const px=rx+sd*22, py=KBD+1;
+      ctx.fillStyle='#e8dfc0'; ctx.fillRect(px-6,py-4,12,9);
+      ctx.strokeStyle='#b8a870'; ctx.lineWidth=0.6; ctx.strokeRect(px-6,py-4,12,9);
+      ctx.strokeStyle='#9a9060';
+      for (let nl=0;nl<3;nl++) { ctx.beginPath(); ctx.moveTo(px-4,py-2+nl*2.8); ctx.lineTo(px+4,py-2+nl*2.8); ctx.stroke(); }
+      ctx.strokeStyle='#282828'; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.moveTo(rhx,rhy); ctx.lineTo(rhx+sd*5,rhy-5); ctx.stroke();
+      ctx.fillStyle='#cc1111'; ctx.beginPath(); ctx.arc(rhx+sd*5,rhy-5,1.2,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=sc;
+    }
+
+    // ── Head (torus, same style as player) ───────────────────
+    const hx2 = shX + headLean, hy2 = shY - 10 + bob + headDroop;
+    ctx.strokeStyle=sc; ctx.lineWidth=1.8;
+    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(hx2, hy2+6); ctx.stroke(); // neck
+    ctx.fillStyle=sc;
     ctx.beginPath();
-    ctx.arc(rhx, rhy, 6.5, 0, Math.PI*2, false);
-    ctx.arc(rhx, rhy, 4,   0, Math.PI*2, true);
+    ctx.arc(hx2,hy2,6.5,0,Math.PI*2,false);
+    ctx.arc(hx2,hy2,4,  0,Math.PI*2,true);
     ctx.fill('evenodd');
-    ctx.strokeStyle = sc; ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.arc(rhx, rhy, 6.5, 0, Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(rhx, rhy, 4,   0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = sc;
-    // accessories per variant
-    if (type === 0) {
-      // glasses
-      ctx.strokeStyle = '#888'; ctx.lineWidth = 0.9;
-      ctx.beginPath(); ctx.arc(rx+hx+screenDir*2, ry-31+bob, 3, 0, Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(rx+hx-screenDir*2, ry-31+bob, 3, 0, Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(rx+hx+screenDir*2-3, ry-31+bob); ctx.lineTo(rx+hx-screenDir*2+3, ry-31+bob); ctx.stroke();
+    ctx.strokeStyle=sc; ctx.lineWidth=1.3;
+    ctx.beginPath(); ctx.arc(hx2,hy2,6.5,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx2,hy2,4,  0,Math.PI*2); ctx.stroke();
+
+    // Accessories
+    if (type===0) { // glasses
+      ctx.strokeStyle='#888'; ctx.lineWidth=0.9;
+      ctx.beginPath(); ctx.arc(hx2+sd*2,hy2-1,2.5,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(hx2-sd*2,hy2-1,2.5,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hx2+sd*2-2,hy2-1); ctx.lineTo(hx2-sd*2+2,hy2-1); ctx.stroke();
     }
-    if (type === 1) {
-      // beanie hat
-      ctx.fillStyle = '#3355aa';
-      ctx.beginPath(); ctx.arc(rx+hx, ry-36+bob, 5.5, Math.PI, 0); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = '#2244aa';
-      ctx.fillRect(rx+hx-6, ry-37+bob, 12, 3);
+    if (type===1) { // beanie
+      ctx.fillStyle='#3355aa';
+      ctx.beginPath(); ctx.arc(hx2,hy2-2,6,Math.PI,0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#2244aa'; ctx.fillRect(hx2-6,hy2-4,12,3);
     }
-    if (type === 2) {
-      // clipboard in spare hand
-      ctx.fillStyle = '#8b6a3a'; ctx.strokeStyle = '#5a4020'; ctx.lineWidth = 0.8;
-      ctx.fillRect(rx+hx - screenDir*14, ry-22+bob, 8, 11); ctx.strokeRect(rx+hx-screenDir*14, ry-22+bob, 8, 11);
-      ctx.strokeStyle = '#334'; ctx.lineWidth = 0.6;
-      for (let cl=0;cl<3;cl++) ctx.strokeRect(rx+hx-screenDir*13, ry-20+bob+cl*3, 6, 1);
+
+    // Mouth open during phone call
+    if (mouth>0.05) {
+      ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=0.9;
+      ctx.beginPath(); ctx.arc(hx2+sd,hy2+2,2*mouth,0.1,Math.PI-0.1); ctx.stroke();
     }
-    if (type === 3) {
-      // coffee mug in spare hand
-      ctx.fillStyle = '#663300';
-      ctx.fillRect(rx+hx - screenDir*16, ry-18+bob, 7, 8);
-      ctx.strokeStyle = '#884400'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(rx+hx-screenDir*9, ry-14+bob, 3, -0.7, 0.7); ctx.stroke();
-      // steam
-      for (let st=0;st<2;st++) {
-        const sp=(f*0.9+st*20)%30;
-        ctx.globalAlpha *= 0.5*(1-sp/30);
-        ctx.strokeStyle='#aabbcc'; ctx.lineWidth=0.8;
-        ctx.beginPath(); ctx.moveTo(rx+hx-screenDir*12+st*3, ry-18+bob-sp*0.3);
-        ctx.quadraticCurveTo(rx+hx-screenDir*14+st*2, ry-22+bob-sp*0.3, rx+hx-screenDir*11+st*3, ry-26+bob-sp*0.3); ctx.stroke();
-        ctx.globalAlpha = 1;
+
+    // ZZZ bubbles
+    if (act==='sleep'||act==='nodoff'||act==='wakeup') {
+      const sa = act==='sleep'?1 : act==='nodoff'?Math.min(1,(sT%15000-7000)/240) : Math.max(0,1-(sT%15000-14400)/100);
+      if (sa>0.05) {
+        for (let zi=0;zi<3;zi++) {
+          const zPh=((sT*0.015+zi*0.55)%1);
+          ctx.globalAlpha=sa*Math.min(1,Math.sin(zPh*Math.PI))*0.85;
+          ctx.fillStyle='#aaccff'; ctx.font=`bold ${5+zi*2}px Courier New`; ctx.textAlign='center';
+          ctx.fillText('Z', rx+sd*20+zi*5*sd, hy2-12-zi*8-zPh*18);
+        }
+        ctx.globalAlpha=1; ctx.textAlign='left';
       }
+    }
+
+    // Picker selection arrow above head
+    if (animPicker.open && animPicker.desk===deskIndex) {
+      const arrowTip=hy2-16+Math.sin(f*0.12)*3;
+      ctx.fillStyle='rgba(100,230,180,0.92)';
+      ctx.beginPath(); ctx.moveTo(rx,arrowTip); ctx.lineTo(rx-6,arrowTip-10); ctx.lineTo(rx+6,arrowTip-10); ctx.closePath(); ctx.fill();
+    }
+
+    // Phone ring notification icon
+    if (act==='ring') {
+      const rb=Math.sin(sT*2.0)*2.5;
+      const rix=rx+sd*22, riy=ry-58+rb;
+      ctx.fillStyle=`rgba(30,195,75,${0.78+Math.sin(sT*2.0)*0.18})`;
+      ctx.fillRect(rix-6,riy-7,12,14);
+      ctx.strokeStyle='#fff'; ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.moveTo(rix-3,riy+3); ctx.quadraticCurveTo(rix-3,riy-4,rix,riy-5); ctx.quadraticCurveTo(rix+3,riy-4,rix+3,riy+3); ctx.stroke();
+      ctx.strokeStyle=`rgba(40,200,80,${0.40+Math.sin(sT*2.0)*0.28})`; ctx.lineWidth=1;
+      for (let ra=1;ra<=2;ra++) { ctx.beginPath(); ctx.arc(rix,riy,7+ra*6,-0.75,0.75); ctx.stroke(); }
     }
   }
 
@@ -4164,7 +4495,7 @@ function drawResearchInterior() {
 
     // Draw the researcher — seated normally, or panicking during void storm
     if (!isVoidNow) {
-      researcher(dx+46, dy, dk.fac, dk.sd, dk.bob, dk.var);
+      researcher(dx+46, dy, dk.fac, dk.sd, dk.bob, dk.var, di);
     }
     // (void-storm running is drawn separately below, outside the desk loop)
   }
@@ -7873,6 +8204,25 @@ function drawHUD() {
     ctx.fillStyle = tierC; ctx.font = '9px Courier New'; ctx.fillText('BEYOND', 170, 40);
   }
 
+  // Mute button — sits just below the tier pill
+  {
+    const mbX = 14, mbY = 55, mbW = 164, mbH = 22;
+    const mLabel = audioMuted ? '🔇  MUTED' : '🔊  SOUND ON';
+    ctx.fillStyle = audioMuted ? 'rgba(180,40,40,0.40)' : 'rgba(0,0,0,0.38)';
+    rrect(mbX, mbY, mbW, mbH, 4); ctx.fill();
+    ctx.strokeStyle = audioMuted ? 'rgba(255,80,80,0.50)' : 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 1;
+    rrect(mbX, mbY, mbW, mbH, 4); ctx.stroke();
+    ctx.font = '9px Courier New'; ctx.textAlign = 'left';
+    ctx.fillStyle = audioMuted ? '#ff9090' : 'rgba(190,215,240,0.70)';
+    ctx.fillText(mLabel, mbX + 10, mbY + 14);
+    ctx.fillStyle = 'rgba(160,190,210,0.35)';
+    ctx.font = '7px Courier New'; ctx.textAlign = 'right';
+    ctx.fillText('[M]', mbX + mbW - 6, mbY + 14);
+  }
+
+  ctx.restore();
+
   if (bestScore > 0) {
     ctx.fillStyle = 'rgba(200,228,245,0.20)'; ctx.font = '8px Courier New';
     ctx.textAlign = 'center'; ctx.fillText('BEST ' + bestScore + 'm', 97, 53);
@@ -8106,7 +8456,11 @@ function draw() {
   drawStickman();
   drawVignette();
   ctx.restore();
-  if (player.inHouse && player.inHouse.type === 'research') drawResearchInterior();
+  const inResearch = player.inHouse && player.inHouse.type === 'research';
+  document.getElementById('anim-btn').style.display = inResearch ? 'block' : 'none';
+  if (!inResearch) animPicker.open = false;
+  if (inResearch) drawResearchInterior();
+  if (inResearch && animPicker.open) drawAnimPicker();
   drawHUD();
   drawFreezeMeter();
   drawStaminaBar();
@@ -8376,7 +8730,12 @@ const WindAudio = (() => {
     prevLightning = lightning;
   }
 
-  return { init, update, footstep };
+  function setMute(muted) {
+    if (!master) return;
+    master.gain.setTargetAtTime(muted ? 0 : 0.85, ac.currentTime, 0.05);
+  }
+
+  return { init, update, footstep, setMute };
 })();
 
 // ── Wind Challenge minigame ───────────────────────────────
