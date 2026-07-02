@@ -578,8 +578,10 @@ function updatePlayer() {
         player.sprinting = doSprint;
         if (doSprint) {
           stamina = Math.max(0, stamina - 0.004);
-          if (stamina <= 0) { staminaDepleted = true; player.sprinting = false; }
-        } else if (!staminaDepleted) {
+          if (stamina <= 0) { staminaDepleted = true; staminaCooldown = 120; player.sprinting = false; }
+        } else if (staminaDepleted) {
+          if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
+        } else {
           stamina = Math.min(1, stamina + 0.0018);
         }
         // Horizontal movement
@@ -708,9 +710,11 @@ function updatePlayer() {
           const slope = -3 * cr.depth * t * dx * Math.sqrt(Math.max(0, 1 - (dx*dx)/(cr.radius*cr.radius))) / (cr.radius * cr.radius);
           const movingTowardRim = (dx < 0 && player.vx < 0) || (dx > 0 && player.vx > 0);
           if (movingTowardRim) {
-            // Move player up by how much the surface rises per pixel of horizontal travel,
-            // clamped to a modest step so they can never teleport through the rim.
-            const step = Math.min(Math.abs(player.vx * slope) * 1.2, 6);
+            // Move player up by how much the surface rises per pixel of horizontal travel —
+            // just enough to avoid clipping a wall on shallow slopes. Capped very low (well
+            // under one frame of gravity) so it can't fight its way up steep/deep crater
+            // rims and stop the player from actually dropping in during high wind speeds.
+            const step = Math.min(Math.abs(player.vx * slope) * 0.4, 1.2);
             player.y -= step;
           }
         }
@@ -1112,8 +1116,10 @@ function updateWindDebris() {
 // ── Crater system ─────────────────────────────────────────
 function spawnCrater(wx) {
   const tier   = getWindTier();
-  const radius = 60 + tier * 40 + Math.random() * 25;
-  const depth  = 18 + tier * 18 + Math.random() * 14;
+  // Superlinear growth — later tiers carve craters that are dramatically
+  // wider and deeper than early ones, not just a little bit more.
+  const radius = 70 + tier * 55 + tier * tier * 4 + Math.random() * 28;
+  const depth  = 20 + tier * 24 + tier * tier * 3 + Math.random() * 16;
   craters.push({ wx, radius, depth, age: 0 });
 
   // If player is standing over the crater, launch them upward
@@ -5474,7 +5480,12 @@ function drawResearchInterior() {
     {
       const scCol = player.scarfColor || '#cc2020';
       const neckX = -1, neckY = NY + 1;
-      const sway = Math.sin(frame * 0.05) * 1.2;
+      const air = !player.onGround;
+      // Same trailing-motion logic as outdoors: sprinting whips the scarf
+      // back, jumping flicks it up — layered over the still idle sway.
+      const speedAmt = -pf * (run ? 11 : moving ? 5 : 0);
+      const airAmt   = air ? -pf * 8 - player.vy * 0.6 : 0;
+      const sway = Math.sin(frame * (run ? 0.42 : air ? 0.34 : 0.05)) * (air || run || moving ? 1.6 : 1.2) + speedAmt + airAmt;
 
       ctx.fillStyle = scCol;
       ctx.beginPath();
