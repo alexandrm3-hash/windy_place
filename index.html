@@ -148,6 +148,8 @@
   <button class="sn-metal"    onclick="spawnHouseType('metal');closeSpawnMenu()">🔩 Metal house</button>
   <button class="sn-bunker"   onclick="spawnHouseType('bunker');closeSpawnMenu()">🛡 Bunker</button>
   <button class="sn-research" onclick="spawnHouseType('research');closeSpawnMenu()">🔬 Research base</button>
+  <button onclick="spawnHouseType('broken');closeSpawnMenu()">🏚 Broken shack</button>
+  <button onclick="spawnShopNearby();closeSpawnMenu()">🛒 Shop</button>
 </div>
 <div id="anim-btn" onclick="toggleAnimPicker()">🎬 ANIM TEST</div>
 <div id="test-btn" onclick="toggleTestMenu()">⚡ WIND</div>
@@ -360,6 +362,22 @@ let tornadoSkipsLeft = 5;    // tornado encounters left to skip the escape minig
 let tornadoWasNear   = false;
 let noteOpen = false;        // whether the crate note near "your house" is being read
 let noteSiblingLabel = 'brother';
+let coins = [];               // collectible coins placed every 100m
+let coinScore = 0;
+let nextCoinX = 1200;          // world x (px) of the next 100m coin marker (12px = 1m)
+let loot = null;              // { house, timer, maxTimer, amount } while looting a broken shack
+let lootPopup = null;         // { x, y, amount, life } floating "+N" text after a loot completes
+let shops = [];                // roadside shop stalls, one every 1000m (see nextShopMeter())
+let nextShopMeter = 1000;
+let shopOpen = false;
+
+// 1000, 2000, 3000, 4000, 4500, 6000, 7000, 8000... — the 5000m slot is
+// pulled in to 4500m, then the every-1000m cadence resumes from 6000m.
+function nextShopMeterAfter(m) {
+  if (m === 4000) return 4500;
+  if (m === 4500) return 6000;
+  return m + 1000;
+}
 
 // ── Platform generation ───────────────────────────────────
 function initPlatforms() {
@@ -367,6 +385,11 @@ function initPlatforms() {
   decorations  = [];
   genFrontier  = 0;
   maxReach     = 0;
+  coins        = [];
+  coinScore    = 0;
+  nextCoinX    = 1200;
+  shops        = [];
+  nextShopMeter = 1000;
 
   platforms.push({ x: 0,   y: 420, w: 680, h: 500 }); // starting ground
 
@@ -397,10 +420,12 @@ function extendMap() {
       const researchChance = tier === 7 ? 0.40 : 0.005;
       const bunkerChance   = tier >= 6 ? 0.30 : 0.01;
       const metalChance    = Math.min(1, 0.10 + tier * 0.20);
+      const brokenChance   = 0.16;
       const r = Math.random();
       const type = r < researchChance ? 'research'
                  : r < researchChance + bunkerChance ? 'bunker'
                  : r < researchChance + bunkerChance + metalChance ? 'metal'
+                 : r < researchChance + bunkerChance + metalChance + brokenChance ? 'broken'
                  : 'normal';
       const isBunker   = type === 'bunker';
       const isResearch = type === 'research';
@@ -408,11 +433,21 @@ function extendMap() {
       const hYOffset = isResearch ? 240 : isBunker ? 175 : 120;
       const bx = hx;
       const hGroundY = baseGroundY(bx + hw2);
-      houses.push({ x:bx, y:hGroundY - hYOffset, w:isResearch?320:isBunker?180:110,
+      const newHouse = { x:bx, y:hGroundY - hYOffset, w:isResearch?320:isBunker?180:110,
                     type,
                     flying:false, flyTimer: 40 + Math.floor(Math.random() * 160),
                     flyDelay: 40 + Math.floor(Math.random() * 160),
-                    vy:0, vx:0, angle:0, alpha:1 });
+                    vy:0, vx:0, angle: type === 'broken' ? (Math.random() - 0.5) * 0.12 : 0, alpha:1,
+                    looted: false };
+      houses.push(newHouse);
+      // A house can also land on a coin placed by an earlier chunk (coins
+      // get nudged clear of already-existing houses, but not the reverse) —
+      // catch that here by nudging any such coin out from under it.
+      for (const c of coins) {
+        if (!c.collected && c.x > newHouse.x - 30 && c.x < newHouse.x + newHouse.w + 30) {
+          c.x = newHouse.x + newHouse.w + 30;
+        }
+      }
     }
 
     // Maybe place a decoration (snowman or pine tree)
@@ -420,6 +455,52 @@ function extendMap() {
       const dx = chunkX + 20 + Math.random() * Math.max(0, chunkW - 40);
       decorations.push({ x: dx, y: baseGroundY(dx), type: Math.random() < 0.5 ? 'snowman' : 'pinetree',
                          vx: 0, vy: 0, angle: 0, flying: false, alpha: 1 });
+    }
+
+    // Coin every 100m — either sitting on the path or floating up high
+    // enough that it takes a jump to reach.
+    while (nextCoinX < chunkX + chunkW) {
+      let cxWorld = nextCoinX;
+      // Nudge clear of any house footprint so the coin never spawns
+      // embedded inside a wall where it'd be invisible.
+      for (const hh of houses) {
+        if (cxWorld > hh.x - 30 && cxWorld < hh.x + hh.w + 30) {
+          cxWorld = hh.x + hh.w + 30;
+        }
+      }
+      const upper = Math.random() < 0.5;
+      // No cached y here — terrain height at a given x isn't constant over
+      // time (baseGroundY depends on terrainDrama, which grows with tier),
+      // so a coin frozen at spawn-time height would end up buried or
+      // floating as the ground around it later rises or sinks. Instead
+      // it's computed live off the coin's x every frame (see coinGroundY).
+      coins.push({
+        x: cxWorld,
+        upper,
+        collected: false,
+        bob: Math.random() * Math.PI * 2,
+      });
+      nextCoinX += 1200;
+    }
+
+    // Roadside shop — see nextShopMeterAfter() for the exact spacing rule.
+    while (nextShopMeter * 12 < chunkX + chunkW) {
+      let sxWorld = nextShopMeter * 12;
+      const shopW = 70;
+      for (const hh of houses) {
+        if (sxWorld > hh.x - shopW && sxWorld < hh.x + hh.w + shopW) {
+          sxWorld = hh.x + hh.w + shopW;
+        }
+      }
+      const sGroundY = baseGroundY(sxWorld + shopW / 2);
+      shops.push({ x: sxWorld, y: sGroundY - 84, w: shopW });
+      // Keep coins from landing inside the shop's footprint either
+      for (const c of coins) {
+        if (!c.collected && c.x > sxWorld - 30 && c.x < sxWorld + shopW + 30) {
+          c.x = sxWorld + shopW + 30;
+        }
+      }
+      nextShopMeter = nextShopMeterAfter(nextShopMeter);
     }
 
     genFrontier = chunkX + chunkW;
@@ -432,6 +513,85 @@ function trimPlatforms() {
   houses       = houses.filter(h => h.alpha > 0.02 && h.x + h.w >= cut - 400);
   decorations  = decorations.filter(d => d.alpha > 0.02 && d.x >= cut - 100);
   craters      = craters.filter(cr => cr.wx + cr.radius >= cut);
+  coins        = coins.filter(c => !c.collected && c.x >= cut - 100);
+  shops        = shops.filter(s => s.x + s.w >= cut - 200);
+}
+
+// ── Coins ────────────────────────────────────────────────
+// Ground height at a coin's x, computed live (matches how the player and
+// terrain itself are positioned) instead of caching a y at spawn time —
+// baseGroundY depends on terrainDrama, which keeps changing as tier rises,
+// so a frozen y would drift out of sync with the actual ground later.
+function coinGroundY(wx) {
+  let gy = baseGroundY(wx);
+  for (const cr of craters) {
+    const dx = wx - cr.wx;
+    if (Math.abs(dx) < cr.radius) {
+      const t = Math.min(1, cr.age / 60);
+      gy += Math.pow(1 - (dx * dx) / (cr.radius * cr.radius), 1.5) * cr.depth * t;
+    }
+  }
+  return gy;
+}
+
+function updateCoins() {
+  if (player.inHouse) return;
+  const pCx = player.x + player.w / 2, pCy = player.y + player.h / 2;
+  for (const c of coins) {
+    if (c.collected) continue;
+    c.bob += 0.06;
+    const cy = coinGroundY(c.x) - (c.upper ? 78 : 20);
+    const dx = pCx - c.x, dy = pCy - cy;
+    if (dx * dx + dy * dy < 26 * 26) {
+      c.collected = true;
+      coinScore++;
+      WindAudio.coin();
+    }
+  }
+}
+
+function drawCoins() {
+  for (const c of coins) {
+    if (c.collected) continue;
+    const cy = coinGroundY(c.x) - (c.upper ? 78 : 20);
+    const sx = c.x - cam.x, sy = cy - cam.y + Math.sin(c.bob) * 3;
+    if (sx < -40 || sx > W + 40 || sy > H + 40) continue;
+    const spin = Math.cos(frame * 0.05 + c.x * 0.01);
+    const rx = Math.max(1.5, Math.abs(spin) * 9);
+    ctx.save();
+    ctx.translate(sx, sy);
+    // Soft glow
+    ctx.fillStyle = 'rgba(255,215,80,0.18)';
+    ctx.beginPath(); ctx.ellipse(0, 0, rx + 6, 15, 0, 0, Math.PI*2); ctx.fill();
+    // Coin body (squashed horizontally to fake a 3D spin)
+    const grd = ctx.createLinearGradient(-rx, 0, rx, 0);
+    grd.addColorStop(0, '#a87418');
+    grd.addColorStop(0.5, spin >= 0 ? '#ffe066' : '#c99a2e');
+    grd.addColorStop(1, '#a87418');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.ellipse(0, 0, rx, 9, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#7a5410'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(0, 0, rx, 9, 0, 0, Math.PI*2); ctx.stroke();
+    // Face-on glint when nearly edge-on flips to wide
+    if (rx > 5) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.ellipse(0, 0, rx * 0.55, 5, 0, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Little upward arrow hint under coins placed high, so it reads as
+    // "needs a jump" rather than looking like a floating glitch
+    if (c.upper) {
+      ctx.save();
+      ctx.globalAlpha = 0.35 + Math.sin(frame * 0.08) * 0.15;
+      ctx.strokeStyle = '#ffe066'; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy + 22); ctx.lineTo(sx, sy + 34);
+      ctx.moveTo(sx - 4, sy + 26); ctx.lineTo(sx, sy + 22); ctx.lineTo(sx + 4, sy + 26);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
 // ── Init ─────────────────────────────────────────────────
@@ -498,6 +658,9 @@ function init() {
   }
   noteOpen = false;
   noteSiblingLabel = Math.random() < 0.5 ? 'little brother' : 'brother';
+  loot = null;
+  lootPopup = null;
+  shopOpen = false;
 }
 
 // ── Input ─────────────────────────────────────────────────
@@ -528,8 +691,9 @@ window.addEventListener('keydown', e => {
     audioMuted = !audioMuted;
     WindAudio.setMute(audioMuted);
   }
-  if (e.code === 'KeyE' && gState === 'playing' && !e.repeat) handleEnterExit();
+  if (e.code === 'KeyE' && gState === 'playing' && !e.repeat) { handleEnterExit(); handleShopKey(); }
   if (e.code === 'KeyF' && gState === 'playing' && !e.repeat && !player.inHouse) handleNoteKey();
+  if (e.code === 'KeyQ' && gState === 'playing' && !e.repeat) handleLootKey();
   if (gState === 'playing' && !e.repeat) handleChallengeKey(e.code);
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))
     e.preventDefault();
@@ -594,7 +758,7 @@ function updateWind() {
 
 // ── Player update ─────────────────────────────────────────
 function updatePlayer() {
-  const chalActive = challenge && challenge.result === null;
+  const chalActive = (challenge && challenge.result === null) || !!loot || shopOpen;
   const sprintKeyEarly = keys['ShiftLeft'] && !staminaDepleted && stamina > 0;
 
   // When sheltered: hold position in the house, skip all physics
@@ -858,7 +1022,7 @@ function updatePlayer() {
 // ── House helpers ─────────────────────────────────────────
 // True when player is standing close enough to the door to press E
 function nearHouse(h) {
-  if (h.flying || h.alpha < 0.5 || h.giant) return false;
+  if (h.flying || h.alpha < 0.5 || h.giant || h.type === 'broken') return false;
   const hCx = h.x + h.w / 2, pCx = player.x + player.w / 2;
   const hH = h.type === 'research' ? 240 : h.type === 'bunker' ? 180 : 120;
   const hBottom = h.y + hH, pBottom = player.y + player.h;
@@ -882,6 +1046,67 @@ function handleNoteKey() {
   if (gState !== 'playing') return;
   if (noteOpen) { noteOpen = false; return; }
   if (nearNote()) noteOpen = true;
+}
+
+// ── Shop (E) ─────────────────────────────────────────────
+function nearShop() {
+  if (player.inHouse) return null;
+  const pCx = player.x + player.w / 2;
+  for (const s of shops) {
+    if (Math.abs(pCx - (s.x + s.w / 2)) < 55) return s;
+  }
+  return null;
+}
+
+function updateShop() {
+  if (shopOpen && !nearShop()) shopOpen = false;
+}
+
+function handleShopKey() {
+  if (gState !== 'playing') return;
+  if (shopOpen) { shopOpen = false; return; }
+  if (nearShop()) shopOpen = true;
+}
+
+// ── Looting broken shacks (Q) ────────────────────────────
+function nearLootableHouse() {
+  if (player.inHouse) return null;
+  for (const h of houses) {
+    if (h.type !== 'broken' || h.flying || h.looted || h.alpha < 0.5) continue;
+    const hCx = h.x + h.w / 2, pCx = player.x + player.w / 2;
+    const hBottom = h.y + 120, pBottom = player.y + player.h;
+    if (Math.abs(pCx - hCx) < 60 && pBottom < hBottom + 38 && pBottom > hBottom - 70) return h;
+  }
+  return null;
+}
+
+function handleLootKey() {
+  if (gState !== 'playing' || loot) return;
+  const h = nearLootableHouse();
+  if (!h) return;
+  loot = { house: h, timer: 540, maxTimer: 540 };  // 9s at 60fps
+}
+
+function updateLoot() {
+  if (!loot) {
+    if (lootPopup) {
+      lootPopup.y -= 0.4;
+      lootPopup.life -= 0.012;
+      if (lootPopup.life <= 0) lootPopup = null;
+    }
+    return;
+  }
+  // Cancel if the house flies away or the player wanders off mid-animation
+  if (loot.house.flying || loot.house.alpha < 0.5) { loot = null; return; }
+  loot.timer--;
+  if (loot.timer <= 0) {
+    loot.house.looted = true;
+    const amount = 1 + Math.floor(Math.random() * 10); // 1–10 coins
+    coinScore += amount;
+    WindAudio.coin();
+    lootPopup = { x: loot.house.x + loot.house.w / 2, y: loot.house.y + 60, amount, life: 1 };
+    loot = null;
+  }
 }
 
 function handleEnterExit() {
@@ -939,6 +1164,10 @@ function updateHouses() {
   const isTornado   = wind.force < -1.00 || wind.force > 1.00;
   const isHypercane = wind.force < -1.80;
   const isVoidStorm = wind.force < -2.60; // VOID STORM — fortress bunkers also torn apart
+  // Broken-down shacks are fragile enough to get torn away by anything at
+  // or beyond strong headwind/gale force — well below what it takes to
+  // destroy a normal house.
+  const isBrokenThreat = wind.force < -0.35;
   const liftMult    = isVoidStorm ? 8.0 : isHypercane ? 2.8 : isTornado ? 1.6 : 1.0;
   for (const h of houses) {
     if (h.flying) {
@@ -948,7 +1177,13 @@ function updateHouses() {
       h.y  += h.vy;
       h.angle += h.vx * 0.015;
       if (h.y - cam.y < -80) h.alpha -= 0.025;
-    } else if (!h.giant && h.type !== 'research' && (isVoidStorm ||
+    } else if (!h.giant && h.type === 'broken' && isBrokenThreat) {
+      h.flyTimer--;
+      if (h.flyTimer <= 0) {
+        h.flying = true;
+        if (player.inHouse === h) player.inHouse = null;
+      }
+    } else if (!h.giant && h.type !== 'research' && h.type !== 'broken' && (isVoidStorm ||
                (isHypercane && h.type === 'metal') ||
                (isStorm && h.type !== 'metal' && h.type !== 'bunker'))) {
       h.flyTimer--;
@@ -1297,6 +1532,9 @@ function update() {
   updateChallenge();
   updateCraters();
   updateNote();
+  updateCoins();
+  updateLoot();
+  updateShop();
 
   // Wind streak particles (blizzard streaks in strong wind)
   if (Math.abs(wind.force) > 0.20 && Math.random() < Math.abs(wind.force) * 3) {
@@ -8112,6 +8350,139 @@ function drawHouse(h) {
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
     ctx.fillRect(-hw * 0.4 - 7, roofPeak - 17, 5, 7);
 
+  } else if (h.type === 'broken') {
+    // ══════════════════════════════════════════════════
+    // ── SCAVENGER SHANTY — a lean-to shack cobbled from     ──
+    // ── mismatched scrap, nothing like the other houses.    ──
+    // ══════════════════════════════════════════════════
+    const shTallX = -hw, shShortX = hw;     // lean-to: tall on the left, short on the right
+    const shTallY = -58, shShortY = -30;    // roof heights at each side
+    const shBaseY = BH/2 - 4;               // ground line
+
+    // Occupied warm glow (dim, campfire-orange rather than a cozy hearth)
+    if (warm) {
+      const grd = ctx.createRadialGradient(0, -10, 0, 0, -10, hw * 2.2);
+      grd.addColorStop(0, 'rgba(255,120,30,0.26)');
+      grd.addColorStop(1, 'rgba(255,120,30,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(-hw * 2.2, -80, hw * 4.4, 160);
+    }
+
+    // Crude wood-pallet foundation
+    ctx.fillStyle = '#2a2420';
+    ctx.fillRect(-hw - 6, shBaseY, h.w + 12, 8);
+
+    // Rusty barrel propped against the tall side
+    ctx.save();
+    ctx.translate(-hw - 10, shBaseY);
+    ctx.fillStyle = '#5a3a28';
+    ctx.fillRect(-6, -22, 12, 22);
+    ctx.strokeStyle = '#3a2418'; ctx.lineWidth = 1.2;
+    ctx.strokeRect(-6, -22, 12, 22);
+    ctx.beginPath(); ctx.moveTo(-6, -15); ctx.lineTo(6, -15); ctx.moveTo(-6, -7); ctx.lineTo(6, -7); ctx.stroke();
+    ctx.restore();
+
+    // Walls — patched together from mismatched scrap panels, each its own
+    // salvaged color/material instead of one uniform siding.
+    const patchColors = ['#5a5850', '#6a4838', '#4a5648', '#584838'];
+    const wallTop = shTallY + 4;
+    const nPatches = 5;
+    for (let i = 0; i < nPatches; i++) {
+      const px1 = -hw + (h.w * i) / nPatches;
+      const px2 = -hw + (h.w * (i + 1)) / nPatches;
+      const jitterY = Math.sin(i * 2.3) * 4;
+      ctx.fillStyle = patchColors[i % patchColors.length];
+      ctx.fillRect(px1, wallTop + jitterY, px2 - px1 + 0.5, shBaseY - (wallTop + jitterY));
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+      ctx.strokeRect(px1, wallTop + jitterY, px2 - px1, shBaseY - (wallTop + jitterY));
+      // A rivet or two per patch, sells the "bolted scrap" look
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath(); ctx.arc(px1 + 4, wallTop + jitterY + 6, 1.2, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Corrugated lean-to roof — single slanted sheet, not a peaked triangle
+    ctx.fillStyle = '#7a7a76';
+    ctx.beginPath();
+    ctx.moveTo(shTallX - 10, shTallY);
+    ctx.lineTo(shShortX + 6, shShortY);
+    ctx.lineTo(shShortX + 6, shShortY + 7);
+    ctx.lineTo(shTallX - 10, shTallY + 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1;
+    ctx.stroke();
+    // Corrugation ridges
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 0.8;
+    for (let r = 1; r < 8; r++) {
+      const t = r / 8;
+      const rx = shTallX - 10 + (shShortX + 6 - (shTallX - 10)) * t;
+      const ry = shTallY + (shShortY - shTallY) * t;
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx, ry + 7); ctx.stroke();
+    }
+    // A mismatched blue tarp patch covering a rusted-through section
+    ctx.fillStyle = 'rgba(70,110,150,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(shTallX + hw*0.5, shTallY + (shShortY - shTallY)*0.32 - 2);
+    ctx.lineTo(shTallX + hw*0.95, shTallY + (shShortY - shTallY)*0.48 - 3);
+    ctx.lineTo(shTallX + hw*0.88, shTallY + (shShortY - shTallY)*0.48 + 6);
+    ctx.lineTo(shTallX + hw*0.46, shTallY + (shShortY - shTallY)*0.32 + 6);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(30,50,70,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+
+    // Stovepipe chimney — thin bent pipe, not a brick chimney
+    const pipeX = shTallX + hw * 0.4;
+    ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pipeX, shTallY + (shShortY - shTallY) * 0.32);
+    ctx.lineTo(pipeX - 2, shTallY + (shShortY - shTallY) * 0.32 - 20);
+    ctx.lineTo(pipeX + 4, shTallY + (shShortY - shTallY) * 0.32 - 26);
+    ctx.stroke();
+    // Thin wisp of smoke
+    for (let i = 0; i < 3; i++) {
+      const t2 = ((frame * 0.012 + i * 0.3) % 1);
+      ctx.globalAlpha = h.alpha * (0.3 - t2 * 0.3);
+      ctx.fillStyle = '#9a9a9a';
+      ctx.beginPath();
+      ctx.arc(pipeX + 4 + Math.sin(t2*6+i)*3, shTallY + (shShortY-shTallY)*0.32 - 26 - t2*26, 2 + t2*5, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = h.alpha;
+
+    // Round porthole window, cracked
+    const potX = hw * 0.15, potY = (shTallY + shBaseY) * 0.5 - 6;
+    ctx.fillStyle = warm ? '#ffcc55' : '#101820';
+    ctx.beginPath(); ctx.arc(potX, potY, 8, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(potX, potY, 8, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(potX - 5, potY - 3); ctx.lineTo(potX + 2, potY + 4);
+    ctx.moveTo(potX - 1, potY - 6); ctx.lineTo(potX + 4, potY - 1);
+    ctx.stroke();
+
+    // Doorway — dark gap covered by two ragged cloth flaps instead of a door
+    const doorX = -hw * 0.5, doorW = 20, doorTop = shBaseY - 34;
+    ctx.fillStyle = '#0c0c0e';
+    ctx.fillRect(doorX - doorW/2, doorTop, doorW, shBaseY - doorTop);
+    for (const side of [-1, 1]) {
+      const flap = Math.sin(frame * 0.04 + (side>0?1.6:0)) * 2.5;
+      ctx.fillStyle = side < 0 ? '#5a4838' : '#4e3e30';
+      ctx.beginPath();
+      ctx.moveTo(doorX + side*doorW/2, doorTop);
+      ctx.lineTo(doorX, doorTop + 4);
+      ctx.lineTo(doorX + side*(doorW/2 - 3) + flap, shBaseY);
+      ctx.lineTo(doorX + side*doorW/2, shBaseY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Leaning support pole propping up the tall side
+    ctx.strokeStyle = '#3a2c1e'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(shTallX - 12, shTallY + 6);
+    ctx.lineTo(shTallX - 2, shBaseY);
+    ctx.stroke();
+
   } else {
     // ══════════════════════════════════════════════════
     // ── NORMAL WOODEN HOUSE ───────────────────────────
@@ -9082,6 +9453,18 @@ function drawHUD() {
     ctx.fillStyle = tierC; ctx.font = '9px Courier New'; ctx.fillText('BEYOND', 170, 40);
   }
 
+  // Coin counter — sits right next to the tier pill
+  {
+    const cbX = 182, cbY = 10, cbW = 54, cbH = 40;
+    ctx.fillStyle = 'rgba(0,0,0,0.48)'; rrect(cbX, cbY, cbW, cbH, 5); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,215,80,0.30)'; ctx.lineWidth = 1; rrect(cbX, cbY, cbW, cbH, 5); ctx.stroke();
+    ctx.fillStyle = '#ffe066';
+    ctx.beginPath(); ctx.ellipse(cbX + 13, cbY + 21, 7, 8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#a87418'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(cbX + 13, cbY + 21, 7, 8, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = C.text; ctx.font = 'bold 15px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText('' + coinScore, cbX + 25, cbY + 26);
+  }
+
   // Mute button — sits just below the tier pill
   {
     const mbX = 14, mbY = 55, mbW = 164, mbH = 22;
@@ -9326,7 +9709,9 @@ function draw() {
   drawCraters();
   platforms.filter(p => p.h <= 20).forEach(drawPlatform);
   drawDecorations();
+  drawCoins();
   houses.forEach(drawHouse);
+  shops.forEach(drawShop);
   drawLightning();
   drawTornado();
   drawStickman();
@@ -9342,6 +9727,8 @@ function draw() {
   drawStaminaBar();
   drawChallenge();
   drawNoteUI();
+  drawLootUI();
+  drawShopUI();
   drawOverlay();
 }
 
@@ -9397,6 +9784,167 @@ function drawNoteUI() {
     ctx.fillText('[ F ]  CLOSE', cx, cy + ph/2 - 14);
     ctx.restore();
   }
+}
+
+function drawShop(s) {
+  const cx = s.x - cam.x + s.w / 2, cy = s.y - cam.y;
+  if (cx < -150 || cx > W + 150) return;
+  const hw = s.w / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  // Scale up around the counter's base (y=26, the ground line) so it grows
+  // without floating or sinking relative to the terrain.
+  const shopScale = 1.6;
+  ctx.translate(0, 26);
+  ctx.scale(shopScale, shopScale);
+  ctx.translate(0, -26);
+
+  // Warm lantern glow
+  const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 3);
+  grd.addColorStop(0, 'rgba(255,190,80,0.22)');
+  grd.addColorStop(1, 'rgba(255,190,80,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(-hw * 3, -70, hw * 6, 140);
+
+  // Counter/stall base
+  ctx.fillStyle = '#5a3c24';
+  ctx.fillRect(-hw, 0, s.w, 26);
+  ctx.strokeStyle = '#3a2414'; ctx.lineWidth = 1;
+  ctx.strokeRect(-hw, 0, s.w, 26);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(-hw, 20, s.w, 6);
+
+  // Goods on the counter — a few crates/jars
+  ctx.fillStyle = '#6a4a30'; ctx.fillRect(-hw + 6, -8, 12, 10);
+  ctx.strokeStyle = '#3e2c1c'; ctx.lineWidth = 0.8; ctx.strokeRect(-hw + 6, -8, 12, 10);
+  ctx.fillStyle = '#c99a2e'; ctx.beginPath(); ctx.arc(hw - 12, -4, 5, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#7a5410'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(hw - 12, -4, 5, 0, Math.PI*2); ctx.stroke();
+
+  // Support poles
+  ctx.strokeStyle = '#3a2818'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(-hw + 3, 0); ctx.lineTo(-hw + 3, -48); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(hw - 3, 0); ctx.lineTo(hw - 3, -48); ctx.stroke();
+
+  // Striped awning
+  const stripes = 6;
+  for (let i = 0; i < stripes; i++) {
+    const x1 = -hw - 6 + (i * (s.w + 12)) / stripes;
+    const x2 = -hw - 6 + ((i + 1) * (s.w + 12)) / stripes;
+    ctx.fillStyle = i % 2 === 0 ? '#c94848' : '#e8ddb8';
+    ctx.beginPath();
+    ctx.moveTo(x1, -48); ctx.lineTo(x2, -48); ctx.lineTo(x2 - 3, -40); ctx.lineTo(x1 + 3, -40);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-hw - 6, -48); ctx.lineTo(hw + 6, -48); ctx.stroke();
+
+  // Hanging sign
+  ctx.fillStyle = '#3a2818'; ctx.fillRect(-18, -34, 36, 14);
+  ctx.strokeStyle = '#241a10'; ctx.lineWidth = 1; ctx.strokeRect(-18, -34, 36, 14);
+  ctx.fillStyle = '#ffe066'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('SHOP', 0, -24);
+
+  ctx.restore();
+}
+
+function drawLootUI() {
+  // Prompt to start looting
+  if (!loot) {
+    const h = nearLootableHouse();
+    if (h) {
+      const promptX = h.x + h.w / 2 - cam.x, promptY = h.y - cam.y + 60;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.60)';
+      rrect(promptX - 46, promptY - 15, 92, 19, 4); ctx.fill();
+      ctx.fillStyle = '#e8d8b0'; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('[ Q ]  LOOT', promptX, promptY);
+      ctx.restore();
+    }
+  }
+
+  // Looting animation — a rummaging bag icon + progress bar over the player
+  if (loot) {
+    const t = 1 - loot.timer / loot.maxTimer;
+    const px = player.x + player.w / 2 - cam.x, py = player.y - cam.y - 24;
+    ctx.save();
+    // Bag icon, shaking as if being rummaged through
+    const shake = Math.sin(frame * 0.9) * 2;
+    ctx.translate(px + shake, py);
+    ctx.fillStyle = '#5a4530';
+    ctx.beginPath();
+    ctx.moveTo(-8, -2); ctx.lineTo(8, -2); ctx.lineTo(6, 10); ctx.lineTo(-6, 10);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#3a2c1e'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.strokeStyle = '#3a2c1e'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, -2, 5, Math.PI, 0); ctx.stroke();
+    // A little coin glint popping out mid-rummage
+    if (Math.sin(frame * 0.5) > 0.4) {
+      ctx.fillStyle = '#ffe066';
+      ctx.beginPath(); ctx.arc(Math.sin(frame*0.5)*5, -6, 2, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Progress bar
+    const barW = 40, barX = px - barW/2, barY = py - 16;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; rrect(barX, barY, barW, 5, 2); ctx.fill();
+    ctx.fillStyle = '#ffe066'; rrect(barX, barY, barW * t, 5, 2); ctx.fill();
+    ctx.fillStyle = 'rgba(230,220,200,0.85)'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('LOOTING...', px, barY - 4);
+    ctx.restore();
+  }
+
+  // Floating "+N" popup after a successful loot
+  if (lootPopup) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, lootPopup.life);
+    ctx.fillStyle = '#ffe066';
+    ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('+' + lootPopup.amount + ' COINS', lootPopup.x - cam.x, lootPopup.y - cam.y);
+    ctx.restore();
+  }
+}
+
+function drawShopUI() {
+  if (!shopOpen) {
+    const s = nearShop();
+    if (s) {
+      const promptX = s.x + s.w / 2 - cam.x, promptY = s.y - cam.y - 60;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.60)';
+      rrect(promptX - 42, promptY - 15, 84, 19, 4); ctx.fill();
+      ctx.fillStyle = '#ffe066'; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('[ E ]  SHOP', promptX, promptY);
+      ctx.restore();
+    }
+    return;
+  }
+
+  const cx = W / 2, cy = H / 2, pw = 260, ph = 170;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#e8ddb8';
+  rrect(cx - pw/2, cy - ph/2, pw, ph, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2;
+  rrect(cx - pw/2, cy - ph/2, pw, ph, 6); ctx.stroke();
+
+  ctx.fillStyle = '#2c2318'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('SHOP', cx, cy - ph/2 + 26);
+
+  ctx.fillStyle = '#5a4530'; ctx.font = '10px Courier New';
+  ctx.fillText('— items coming soon —', cx, cy - ph/2 + 50);
+
+  // Coin balance readout
+  ctx.fillStyle = '#ffe066';
+  ctx.beginPath(); ctx.ellipse(cx - 22, cy - 5, 7, 8, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#a87418'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(cx - 22, cy - 5, 7, 8, 0, 0, Math.PI*2); ctx.stroke();
+  ctx.fillStyle = '#2c2318'; ctx.font = 'bold 16px Courier New'; ctx.textAlign = 'left';
+  ctx.fillText('' + coinScore, cx - 8, cy);
+
+  ctx.fillStyle = 'rgba(44,35,24,0.6)'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('[ E ]  CLOSE', cx, cy + ph/2 - 14);
+  ctx.restore();
 }
 
 // ── Audio System ──────────────────────────────────────────
@@ -9747,7 +10295,23 @@ const WindAudio = (() => {
     master.gain.setTargetAtTime(muted ? 0 : 0.85, ac.currentTime, 0.05);
   }
 
-  return { init, update, footstep, jump, setMute };
+  function coin() {
+    if (!ac) return;
+    const t = ac.currentTime;
+    // Bright two-note chime, classic "pickup" feel
+    [880, 1320].forEach((freq, i) => {
+      const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = freq;
+      const g = ac.createGain();
+      const st = t + i * 0.045;
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(0.22, st + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.16);
+      o.connect(g); g.connect(master);
+      o.start(st); o.stop(st + 0.18);
+    });
+  }
+
+  return { init, update, footstep, jump, coin, setMute };
 })();
 
 // ── Wind Challenge minigame ───────────────────────────────
@@ -9932,7 +10496,15 @@ function spawnHouseType(type) {
     type,
     flying: false, flyTimer: 80, flyDelay: 80,
     vy: 0, vx: 0, angle: 0, alpha: 1,
+    looted: false,
   });
+}
+
+function spawnShopNearby() {
+  if (gState !== 'playing') init();
+  const sx = player.x + player.w / 2 + 200;
+  const shopW = 70;
+  shops.push({ x: sx, y: baseGroundY(sx + shopW / 2) - 84, w: shopW });
 }
 document.addEventListener('click', e => {
   if (!e.target.closest('#test-btn') && !e.target.closest('#test-menu'))
