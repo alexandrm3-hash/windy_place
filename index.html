@@ -163,6 +163,7 @@
   <button onclick="forceWind(6);closeTestMenu()">TORNADO</button>
   <button class="hyper" onclick="forceWind(7);closeTestMenu()">HYPERCANE</button>
   <button class="void" onclick="forceWind(10);closeTestMenu()">VOID STORM</button>
+  <button onclick="forceTornadoChallenge();closeTestMenu()">🌀 FORCE MINIGAME</button>
 </div>
 
 <script>
@@ -581,7 +582,7 @@ function updatePlayer() {
         const doSprint = sprintKeyEarly && player.onGround && !chalActive;
         player.sprinting = doSprint;
         if (doSprint) {
-          stamina = Math.max(0, stamina - 0.004);
+          stamina = Math.max(0, stamina - 0.002);
           if (stamina <= 0) { staminaDepleted = true; staminaCooldown = 120; player.sprinting = false; }
         } else if (staminaDepleted) {
           if (--staminaCooldown <= 0) { staminaDepleted = false; staminaCooldown = 0; }
@@ -781,7 +782,7 @@ function updatePlayer() {
   player.sprinting = sprinting;
   if (sprintKey) {
     // drain whether on ground or airborne — holding shift always costs stamina
-    stamina = Math.max(0, stamina - 0.0038);
+    stamina = Math.max(0, stamina - 0.0019);
     if (stamina <= 0) { stamina = 0; staminaDepleted = true; staminaCooldown = 120; }
   } else if (player.onGround) {
     // regen only when standing still or walking (not holding shift) on the ground
@@ -1143,12 +1144,11 @@ function spawnCrater(wx) {
   const depth  = 20 + tier * 24 + tier * tier * 3 + Math.random() * 16;
   craters.push({ wx, radius, depth, age: 0 });
 
-  // If player is standing over the crater, launch them upward
+  // Nudge the player sideways off-center if a crater opens right under them,
+  // but no longer launch them into the air — they just sink with the ground.
   const playerCx = player.x + player.w * 0.5;
   if (Math.abs(playerCx - wx) < radius) {
-    player.vy = -6;
     player.vx += (playerCx < wx ? -2.5 : 2.5);
-    player.onGround = false;
   }
 
   // Debris particles fly outward
@@ -9668,6 +9668,15 @@ function forceWind(stateIndex) {
   wind.duration = ws.dMax;
   // Force tier high enough to sustain hypercane/tornado probabilities
   if (stateIndex >= 6) maxReach = Math.max(maxReach, 1500 * 12);
+}
+
+function forceTornadoChallenge() {
+  if (gState !== 'playing') init();
+  forceWind(6); // TORNADO — spawns a tornado entity next update tick
+  tornadoSkipsLeft = 0;
+  tornadoWasNear = false;
+  challenge = null;
+  spawnTornadoChallenge();
 }
 
 function applyScale() {
