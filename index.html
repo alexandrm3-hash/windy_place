@@ -5470,9 +5470,64 @@ function drawResearchInterior() {
     ctx.beginPath(); ctx.arc(0,HCY,8,0,Math.PI*2); ctx.stroke();
     ctx.beginPath(); ctx.arc(0,HCY,5,0,Math.PI*2); ctx.stroke();
 
-    // Scarf (no wind indoors — hangs still)
-    ctx.strokeStyle=player.scarfColor || '#cc2020'; ctx.lineWidth=3.5;
-    ctx.beginPath(); ctx.moveTo(-2,NY); ctx.quadraticCurveTo(4,NY+3,6,NY+9); ctx.stroke();
+    // Scarf (no wind indoors — hangs still, gentle idle sway)
+    {
+      const scCol = player.scarfColor || '#cc2020';
+      const neckX = -1, neckY = NY + 1;
+      const sway = Math.sin(frame * 0.05) * 1.2;
+
+      ctx.fillStyle = scCol;
+      ctx.beginPath();
+      ctx.ellipse(neckX, neckY, 5.5, 3.2, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.ellipse(neckX - 0.5, neckY - 0.6, 3.8, 1.8, -0.3, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.ellipse(neckX, neckY, 5.5, 3.2, -0.3, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const drawTail = (baseX, baseY, len, width, endXOff, shade) => {
+        const midX = baseX + endXOff * 0.5 + sway * 0.4, midY = baseY + len * 0.55;
+        const endX = baseX + endXOff + sway,             endY = baseY + len;
+        const nx = -(endY - baseY), ny = (endX - baseX);
+        const nLen = Math.max(0.001, Math.hypot(nx, ny));
+        const ox = (nx / nLen) * width, oy = (ny / nLen) * width;
+
+        ctx.fillStyle = shade;
+        ctx.beginPath();
+        ctx.moveTo(baseX - ox * 0.5, baseY - oy * 0.5);
+        ctx.quadraticCurveTo(midX - ox * 0.3, midY - oy * 0.3, endX - ox * 0.15, endY - oy * 0.15);
+        ctx.lineTo(endX + ox * 0.15, endY + oy * 0.15);
+        ctx.quadraticCurveTo(midX + ox * 0.3, midY + oy * 0.3, baseX + ox * 0.5, baseY + oy * 0.5);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 0.6;
+        for (let s = 1; s < 4; s++) {
+          const t = s / 4, it = 1 - t;
+          const sx = it*it*baseX + 2*it*t*midX + t*t*endX;
+          const sy = it*it*baseY + 2*it*t*midY + t*t*endY;
+          ctx.beginPath();
+          ctx.moveTo(sx - ox * 0.45, sy - oy * 0.45);
+          ctx.lineTo(sx + ox * 0.45, sy + oy * 0.45);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = shade; ctx.lineWidth = 0.8;
+        for (const fo of [-0.5, 0, 0.5]) {
+          ctx.beginPath();
+          ctx.moveTo(endX + ox * fo, endY + oy * fo);
+          ctx.lineTo(endX + ox * fo + sway * 0.15, endY + oy * fo + 2.4);
+          ctx.stroke();
+        }
+      };
+
+      drawTail(neckX - 1.5, neckY + 1.5, 9,   1.7, 3,   scCol);
+      drawTail(neckX + 1.5, neckY + 1.0, 6.5, 1.3, 1.5, scCol + 'cc');
+    }
 
     ctx.restore();
   }
@@ -5784,11 +5839,75 @@ function drawStickman() {
   }
 
   // Scarf — blows in world wind direction, anchored at neck
-  const scarfLocal = wind.force * 16 * f;
-  ctx.strokeStyle = player.scarfColor || '#cc2020'; ctx.lineWidth = 3.5;
-  ctx.beginPath(); ctx.moveTo(-2, NY);
-  ctx.quadraticCurveTo(scarfLocal * 0.5, NY + 3, scarfLocal, NY + 9);
-  ctx.stroke();
+  {
+    const scCol = player.scarfColor || '#cc2020';
+    const neckX = -1, neckY = NY + 1;
+    // Extra trailing motion from the player's own speed (sprint) and a
+    // whip-up lift while airborne, layered on top of the world wind drift.
+    const speedAmt = -f * (run ? 11 : moving ? 5 : 0);
+    const airAmt   = air ? -f * 8 - player.vy * 0.6 : 0;
+    const windAmt = wind.force * 16 * f + speedAmt + airAmt;
+    const flapT = frame * (run ? 0.42 : air ? 0.34 : 0.22);
+
+    // Neck wrap — filled band around the collar with a knit highlight
+    ctx.fillStyle = scCol;
+    ctx.beginPath();
+    ctx.ellipse(neckX, neckY, 5.5, 3.2, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.ellipse(neckX - 0.5, neckY - 0.6, 3.8, 1.8, -0.3, Math.PI * 1.1, Math.PI * 1.9);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.ellipse(neckX, neckY, 5.5, 3.2, -0.3, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Two flowing tails, each drawn as a filled ribbon (two curved edges)
+    // so they can taper and wave in the wind instead of a single stroked line.
+    const drawTail = (baseX, baseY, len, width, phase, shade) => {
+      const w1x = windAmt * 0.55 + Math.sin(flapT + phase) * 2.2;
+      const w2x = windAmt        + Math.sin(flapT * 1.3 + phase) * 3.4;
+      const midX = baseX + w1x * 0.55, midY = baseY + len * 0.55;
+      const endX = baseX + w2x,        endY = baseY + len;
+      const nx = -(endY - baseY), ny = (endX - baseX);
+      const nLen = Math.max(0.001, Math.hypot(nx, ny));
+      const ox = (nx / nLen) * width, oy = (ny / nLen) * width;
+
+      ctx.fillStyle = shade;
+      ctx.beginPath();
+      ctx.moveTo(baseX - ox * 0.5, baseY - oy * 0.5);
+      ctx.quadraticCurveTo(midX - ox * 0.3, midY - oy * 0.3, endX - ox * 0.15, endY - oy * 0.15);
+      ctx.lineTo(endX + ox * 0.15, endY + oy * 0.15);
+      ctx.quadraticCurveTo(midX + ox * 0.3, midY + oy * 0.3, baseX + ox * 0.5, baseY + oy * 0.5);
+      ctx.closePath();
+      ctx.fill();
+
+      // Knit stripe rungs across the tail (along the quadratic centerline)
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 0.6;
+      for (let s = 1; s < 4; s++) {
+        const t = s / 4, it = 1 - t;
+        const sx = it*it*baseX + 2*it*t*midX + t*t*endX;
+        const sy = it*it*baseY + 2*it*t*midY + t*t*endY;
+        ctx.beginPath();
+        ctx.moveTo(sx - ox * 0.45, sy - oy * 0.45);
+        ctx.lineTo(sx + ox * 0.45, sy + oy * 0.45);
+        ctx.stroke();
+      }
+
+      // Fringe tassels at the tip
+      ctx.strokeStyle = shade; ctx.lineWidth = 0.8;
+      for (const fo of [-0.5, 0, 0.5]) {
+        ctx.beginPath();
+        ctx.moveTo(endX + ox * fo, endY + oy * fo);
+        ctx.lineTo(endX + ox * fo + w2x * 0.06, endY + oy * fo + 2.4);
+        ctx.stroke();
+      }
+    };
+
+    drawTail(neckX - 1.5, neckY + 1.5, 9,  1.7, 0.0, scCol);
+    drawTail(neckX + 1.5, neckY + 1.0, 6.5,1.3, 1.8, scCol + 'cc');
+  }
 
   ctx.restore();
 }
