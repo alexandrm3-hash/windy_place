@@ -3433,7 +3433,7 @@ function drawResearchInterior() {
     // fac only affects chair-back side (cosmetic), not body direction.
     const RESEARCHER_COLORS = ['#e87060','#60c8e8','#70e898','#e8c840','#c078e8','#e8884a','#60e8d0','#e860a8','#f0f060','#80e860','#e860d0','#40d0f8','#f8a030','#a0f040','#f06090','#50f0c0','#d0a0f8','#f8d060','#60a8f8','#f87840'];
     const SCARF_COLORS = ['#ff4444','#ff9900','#ffdd00','#44dd44','#4499ff','#cc44ff','#ff44aa','#44ffee','#ff6622','#aaffaa','#ffaaff','#22ccff'];
-    const hasScarf = (deskIndex * 7 + variant * 3 + _baseSeed) % 3 !== 0;
+    const hasScarf = true;
     const scarfColor = SCARF_COLORS[(deskIndex * 5 + variant * 11 + _baseSeed) % SCARF_COLORS.length];
     const sc = RESEARCHER_COLORS[(deskIndex + _baseSeed) % RESEARCHER_COLORS.length];
     ctx.save();
@@ -3609,9 +3609,11 @@ function drawResearchInterior() {
 
     // Accessories
     if (type===1) {  // beanie
-      ctx.fillStyle='#3355aa';
+      const CAP_COLORS = ['#3355aa','#aa3333','#33aa55','#aa8833','#8833aa','#33aaaa','#aa3388','#556633','#334488','#aa5533'];
+      const capColor = CAP_COLORS[(deskIndex * 13 + variant * 7 + _baseSeed) % CAP_COLORS.length];
+      ctx.fillStyle=capColor;
       ctx.beginPath(); ctx.arc(hx,hy-1,5,Math.PI,0); ctx.closePath(); ctx.fill();
-      ctx.fillStyle='#2244aa'; ctx.fillRect(hx-5,hy-3,10,2.5);
+      ctx.fillRect(hx-5,hy-3,10,2.5);
     }
 
     // Mouth
