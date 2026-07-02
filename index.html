@@ -319,6 +319,8 @@ function baseGroundY(wx) {
 // ── Global state ─────────────────────────────────────────
 let gState, player, wind, cam, particles, snowflakes, frame;
 let audioMuted = false;
+const SCARF_COLORS = ['#ff4444','#ff9900','#ffdd00','#44dd44','#4499ff','#cc44ff','#ff44aa','#44ffee','#ff6622','#aaffaa','#ffaaff','#22ccff'];
+const PLAYER_BODY_COLORS = ['#e87060','#60c8e8','#70e898','#e8c840','#c078e8','#e8884a','#60e8d0','#e860a8','#f0f060','#80e860','#e860d0','#40d0f8','#f8a030','#a0f040','#f06090','#50f0c0','#d0a0f8','#f8d060','#60a8f8','#f87840'];
 // ── Anim-picker state ────────────────────────────────────────
 const animPicker = {
   open: false,
@@ -433,7 +435,9 @@ function init() {
   frame  = 0;
 
   player = { x:80, y:376, vx:0, vy:0, w:26, h:44,
-             onGround:false, facing:1, walkF:0, walkT:0, inHouse:null };
+             onGround:false, facing:1, walkF:0, walkT:0, inHouse:null,
+             scarfColor: SCARF_COLORS[Math.floor(Math.random() * SCARF_COLORS.length)],
+             bodyColor: PLAYER_BODY_COLORS[Math.floor(Math.random() * PLAYER_BODY_COLORS.length)] };
 
   wind = { force:0, target:0, timer:0, duration:200, strength:0 };
 
@@ -5445,7 +5449,8 @@ function drawResearchInterior() {
     ctx.translate(psx, psy);
     if (pf < 0) ctx.scale(-1, 1);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = C.text; ctx.fillStyle = C.text;
+    const pc = player.bodyColor || C.text;
+    ctx.strokeStyle = pc; ctx.fillStyle = pc;
 
     const UL=10,LL=9,UA=9,LA=8;
     seg(0,HY, rH,UL, rK,LL, 2.4);
@@ -5456,17 +5461,17 @@ function drawResearchInterior() {
 
     // Torus head
     const HCY = NY - 8;
-    ctx.fillStyle = C.text;
+    ctx.fillStyle = pc;
     ctx.beginPath();
     ctx.arc(0,HCY,8,0,Math.PI*2,false);
     ctx.arc(0,HCY,5,0,Math.PI*2,true);
     ctx.fill('evenodd');
-    ctx.strokeStyle=C.text; ctx.lineWidth=1.8;
+    ctx.strokeStyle=pc; ctx.lineWidth=1.8;
     ctx.beginPath(); ctx.arc(0,HCY,8,0,Math.PI*2); ctx.stroke();
     ctx.beginPath(); ctx.arc(0,HCY,5,0,Math.PI*2); ctx.stroke();
 
     // Scarf (no wind indoors — hangs still)
-    ctx.strokeStyle='#cc2020'; ctx.lineWidth=3.5;
+    ctx.strokeStyle=player.scarfColor || '#cc2020'; ctx.lineWidth=3.5;
     ctx.beginPath(); ctx.moveTo(-2,NY); ctx.quadraticCurveTo(4,NY+3,6,NY+9); ctx.stroke();
 
     ctx.restore();
@@ -5696,7 +5701,8 @@ function drawStickman() {
     ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(jx, jy); ctx.lineTo(ex, ey); ctx.stroke();
   };
 
-  ctx.strokeStyle = C.text;
+  const pc = player.bodyColor || C.text;
+  ctx.strokeStyle = pc;
   const UL = 10, LL = 9;   // upper/lower leg lengths
   const UA =  9, LA = 8;   // upper/lower arm lengths
 
@@ -5756,12 +5762,12 @@ function drawStickman() {
 
   // Torus head — donut ring sitting above the neck
   const HCY = NY - 8;   // head centre
-  ctx.fillStyle = C.text;
+  ctx.fillStyle = pc;
   ctx.beginPath();
   ctx.arc(0, HCY, 8,   0, Math.PI * 2, false);  // outer disc
   ctx.arc(0, HCY, 5,   0, Math.PI * 2, true);   // hole punched CCW
   ctx.fill('evenodd');
-  ctx.strokeStyle = C.text; ctx.lineWidth = 1.8;
+  ctx.strokeStyle = pc; ctx.lineWidth = 1.8;
   ctx.beginPath(); ctx.arc(0, HCY, 8,   0, Math.PI * 2); ctx.stroke();
   ctx.beginPath(); ctx.arc(0, HCY, 5,   0, Math.PI * 2); ctx.stroke();
 
@@ -5779,7 +5785,7 @@ function drawStickman() {
 
   // Scarf — blows in world wind direction, anchored at neck
   const scarfLocal = wind.force * 16 * f;
-  ctx.strokeStyle = '#cc2020'; ctx.lineWidth = 3.5;
+  ctx.strokeStyle = player.scarfColor || '#cc2020'; ctx.lineWidth = 3.5;
   ctx.beginPath(); ctx.moveTo(-2, NY);
   ctx.quadraticCurveTo(scarfLocal * 0.5, NY + 3, scarfLocal, NY + 9);
   ctx.stroke();
