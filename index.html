@@ -358,6 +358,8 @@ let craters          = [];
 let craterParticles  = [];
 let tornadoSkipsLeft = 5;    // tornado encounters left to skip the escape minigame
 let tornadoWasNear   = false;
+let noteOpen = false;        // whether the crate note near "your house" is being read
+let noteSiblingLabel = 'brother';
 
 // ── Platform generation ───────────────────────────────────
 function initPlatforms() {
@@ -437,7 +439,14 @@ function init() {
   gState = 'playing';
   frame  = 0;
 
-  player = { x:80, y:376, vx:0, vy:0, w:26, h:44,
+  terrainSeed      = Math.random() * 9999;
+
+  // "Your house" position — computed up front so the player can spawn
+  // right at its door instead of the door being placed after the fact.
+  const homeX = 230, homeHw = 55;
+  const homeGroundY = baseGroundY(homeX + homeHw);
+
+  player = { x: homeX + homeHw - 13, y: homeGroundY - 44, vx:0, vy:0, w:26, h:44,
              onGround:false, facing:1, walkF:0, walkT:0, inHouse:null,
              scarfColor: SCARF_COLORS[Math.floor(Math.random() * SCARF_COLORS.length)],
              bodyColor: PLAYER_BODY_COLORS[Math.floor(Math.random() * PLAYER_BODY_COLORS.length)] };
@@ -445,9 +454,8 @@ function init() {
   wind = { force:0, target:0, timer:0, duration:200, strength:0 };
 
   // Initialize camera so player appears at 60% down immediately
-  cam = { x: 0, y: 376 - H * 0.60 };
+  cam = { x: 0, y: player.y - H * 0.60 };
 
-  terrainSeed      = Math.random() * 9999;
   terrainDrama     = 0;
   secretTierTimer  = 0;
   freezing         = 0;
@@ -472,6 +480,24 @@ function init() {
     speed: 1.4 + (i % 3) * 0.5,
   }));
   initPlatforms();
+
+  // "Your house" — a huge landmark at the very start of the run. Purely a
+  // sentimental fixture: it can't be entered (nearHouse/updateHouses both
+  // skip anything flagged .giant) and never gets torn away by storms.
+  {
+    const giantScale = 2.6, homeHw = 55;
+    houses.push({
+      x: homeX, y: homeGroundY - 120, w: 110, type: 'normal',
+      flying: false, flyTimer: 999999, flyDelay: 999999,
+      vy: 0, vx: 0, angle: 0, alpha: 1,
+      giant: true, giantScale,
+      // World-space x of the note on the crate stack beside the house —
+      // fixed at spawn so both drawing and the F-key proximity check agree.
+      noteWorldX: homeX + homeHw * (1 + giantScale) + 14,
+    });
+  }
+  noteOpen = false;
+  noteSiblingLabel = Math.random() < 0.5 ? 'little brother' : 'brother';
 }
 
 // ── Input ─────────────────────────────────────────────────
@@ -503,6 +529,7 @@ window.addEventListener('keydown', e => {
     WindAudio.setMute(audioMuted);
   }
   if (e.code === 'KeyE' && gState === 'playing' && !e.repeat) handleEnterExit();
+  if (e.code === 'KeyF' && gState === 'playing' && !e.repeat && !player.inHouse) handleNoteKey();
   if (gState === 'playing' && !e.repeat) handleChallengeKey(e.code);
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))
     e.preventDefault();
@@ -837,6 +864,24 @@ function nearHouse(h) {
   const hBottom = h.y + hH, pBottom = player.y + player.h;
   const reach = h.type === 'research' ? 160 : h.type === 'bunker' ? 100 : 68;
   return Math.abs(pCx - hCx) < reach && pBottom < hBottom + 38 && pBottom > hBottom - 70;
+}
+
+// ── Note-on-the-crates interaction (near "your house") ──────
+function nearNote() {
+  const homeHouse = houses.find(h => h.giant);
+  if (!homeHouse || homeHouse.alpha < 0.5) return false;
+  const pCx = player.x + player.w / 2;
+  return Math.abs(pCx - homeHouse.noteWorldX) < 40 && !player.inHouse;
+}
+
+function updateNote() {
+  if (noteOpen && !nearNote()) noteOpen = false;
+}
+
+function handleNoteKey() {
+  if (gState !== 'playing') return;
+  if (noteOpen) { noteOpen = false; return; }
+  if (nearNote()) noteOpen = true;
 }
 
 function handleEnterExit() {
@@ -1251,6 +1296,7 @@ function update() {
   updateFreezing();
   updateChallenge();
   updateCraters();
+  updateNote();
 
   // Wind streak particles (blizzard streaks in strong wind)
   if (Math.abs(wind.force) > 0.20 && Math.random() < Math.abs(wind.force) * 3) {
@@ -5969,17 +6015,193 @@ function drawHouse(h) {
   ctx.rotate(h.angle);
   ctx.globalAlpha = h.alpha;
 
-  // Giant landmark house — pure visual up-scale anchored at the foundation
-  // line so it grows taller/wider without floating or sinking into the ground.
+  const warm    = player.inHouse === h;
+  const isMetal = h.type === 'metal';
+
   if (h.giant) {
+    // ══════════════════════════════════════════════════════════
+    // ── "YOUR HOUSE" — a one-of-a-kind landmark, distinct from     ──
+    // ── every generated house style. Big, boarded up, unenterable. ──
+    // ══════════════════════════════════════════════════════════
     const gs = h.giantScale || 2.4;
     ctx.translate(0, BH / 2);
     ctx.scale(gs, gs);
     ctx.translate(0, -BH / 2);
-  }
 
-  const warm    = player.inHouse === h;
-  const isMetal = h.type === 'metal';
+    // Warm ambient glow — always "occupied" looking, since it's home
+    {
+      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 2.6);
+      grd.addColorStop(0, 'rgba(255,180,90,0.22)');
+      grd.addColorStop(1, 'rgba(255,180,90,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(-hw * 2.6, -RH - BH, hw * 5.2, RH + BH * 2);
+    }
+
+    // Stone foundation — wider, rougher blocks than the normal cottage
+    ctx.fillStyle = '#3a3630';
+    ctx.fillRect(-hw - 6, BH/2 - 8, h.w + 12, 14);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+    for (let fi = 0; fi < 6; fi++) {
+      ctx.beginPath(); ctx.moveTo(-hw - 6 + fi * (h.w+12)/6, BH/2 - 8); ctx.lineTo(-hw - 6 + fi * (h.w+12)/6, BH/2 + 6); ctx.stroke();
+    }
+
+    // Walls — cool slate-blue, distinct from the warm-brown normal cottage
+    ctx.fillStyle = '#3e4a58';
+    ctx.fillRect(-hw, -RH * 0.35, h.w, RH * 0.35 + BH/2 - 6);
+    ctx.fillStyle = '#343e4a';
+    for (let px = -hw + 6; px < hw; px += 9) {
+      ctx.fillRect(px, -RH * 0.35, 1.4, RH * 0.35 + BH/2 - 6);
+    }
+
+    // Stone chimney — thick, off-center, with a steady curl of smoke
+    const chX = hw * 0.32;
+    ctx.fillStyle = '#4a453e';
+    ctx.fillRect(chX, -(RH + BH*0.42), 16, RH * 0.9);
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.8;
+    for (let cm = 0; cm < 5; cm++) {
+      const cy2 = -(RH + BH*0.42) + cm * 7;
+      ctx.beginPath(); ctx.moveTo(chX, cy2); ctx.lineTo(chX+16, cy2); ctx.stroke();
+    }
+    ctx.fillStyle = '#2c2822';
+    ctx.fillRect(chX - 2, -(RH + BH*0.42) - 4, 20, 5);
+    // Smoke puffs
+    for (let si = 0; si < 3; si++) {
+      const sp = ((frame * 0.4 + si * 40) % 120) / 120;
+      ctx.globalAlpha = h.alpha * (1 - sp) * 0.35;
+      ctx.fillStyle = '#cfd6dc';
+      ctx.beginPath();
+      ctx.arc(chX + 8 + Math.sin(sp*6 + si)*4, -(RH + BH*0.42) - 6 - sp*30, 3 + sp*5, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = h.alpha;
+
+    // Steep dark-teal roof with a snow cap — visually distinct from every
+    // brown/metal/concrete roof style used elsewhere
+    const roofPeak = -(RH + BH/2 - 6);
+    // Base edge overlaps a few px into the wall top so there's no gap/seam
+    const wallTopY = -RH * 0.35;
+    const roofBaseY = wallTopY + 4;
+    // Solid roof slab — a simple filled triangle with a bit of eave overhang
+    // at the base (thicker base edge), fully opaque so nothing shows through.
+    ctx.fillStyle = '#1c3a3e';
+    ctx.beginPath();
+    ctx.moveTo(-hw - 14, roofBaseY);
+    ctx.lineTo(0, roofPeak);
+    ctx.lineTo(hw + 14, roofBaseY);
+    ctx.lineTo(hw + 14, roofBaseY + 5);
+    ctx.lineTo(-hw - 14, roofBaseY + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+    ctx.stroke();
+    // Snow cap — a solid smaller triangle sitting on the upper roof slopes
+    ctx.fillStyle = '#f0f6f8';
+    ctx.beginPath();
+    ctx.moveTo(-hw * 0.55, roofPeak + (roofBaseY - roofPeak) * 0.62);
+    ctx.lineTo(0, roofPeak);
+    ctx.lineTo(hw * 0.55, roofPeak + (roofBaseY - roofPeak) * 0.62);
+    ctx.closePath();
+    ctx.fill();
+
+    // Round attic window, warmly lit
+    ctx.fillStyle = '#ffcf7a';
+    ctx.beginPath(); ctx.arc(0, roofPeak + 26, 8, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#2c2822'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, roofPeak + 26, 8, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, roofPeak+26); ctx.lineTo(8, roofPeak+26); ctx.moveTo(0, roofPeak+18); ctx.lineTo(0, roofPeak+34); ctx.stroke();
+
+    // Two ground-floor windows, warm glow
+    for (const wx of [-hw*0.5, hw*0.5]) {
+      ctx.fillStyle = '#ffcf7a';
+      ctx.fillRect(wx - 9, -RH*0.1, 18, 16);
+      ctx.strokeStyle = '#2c2822'; ctx.lineWidth = 1.6;
+      ctx.strokeRect(wx - 9, -RH*0.1, 18, 16);
+      ctx.beginPath(); ctx.moveTo(wx, -RH*0.1); ctx.lineTo(wx, -RH*0.1+16);
+      ctx.moveTo(wx-9, -RH*0.1+8); ctx.lineTo(wx+9, -RH*0.1+8); ctx.stroke();
+      // Flower box
+      ctx.fillStyle = '#5a3a28'; ctx.fillRect(wx-10, -RH*0.1+16, 20, 4);
+      ctx.fillStyle = '#e85a5a';
+      for (let fb = 0; fb < 3; fb++) { ctx.beginPath(); ctx.arc(wx-6+fb*6, -RH*0.1+16, 1.6, 0, Math.PI*2); ctx.fill(); }
+    }
+
+    // Boarded-up double door — the visual tell that this one can't be entered
+    const doorW = 22;
+    ctx.fillStyle = '#332a20';
+    ctx.fillRect(-doorW/2, BH/2 - 6 - RH*0.62, doorW, RH*0.62);
+    ctx.strokeStyle = '#241d16'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(-doorW/2, BH/2 - 6 - RH*0.62, doorW, RH*0.62);
+    // Crossed planks nailed over it
+    ctx.strokeStyle = '#7a5a3a'; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-doorW/2, BH/2 - 6); ctx.lineTo(doorW/2, BH/2 - 6 - RH*0.62);
+    ctx.moveTo(-doorW/2, BH/2 - 6 - RH*0.62); ctx.lineTo(doorW/2, BH/2 - 6);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-doorW/2, BH/2 - 6); ctx.lineTo(doorW/2, BH/2 - 6 - RH*0.62);
+    ctx.moveTo(-doorW/2, BH/2 - 6 - RH*0.62); ctx.lineTo(doorW/2, BH/2 - 6);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Stacked wooden crates to the right of the porch — drawn in plain
+    // screen space (not inside the giant scale transform above) and
+    // grounded per-crate via baseGroundY, same as any other world prop,
+    // so they land exactly on the terrain instead of floating/sinking.
+    const drawCrate = (worldX, s, baseSy) => {
+      const sx = worldX - cam.x;
+      const sy = baseSy !== undefined ? baseSy : baseGroundY(worldX) - cam.y;
+      ctx.save();
+      ctx.globalAlpha = h.alpha;
+      ctx.translate(sx, sy);
+      ctx.fillStyle = '#6a4a30';
+      ctx.fillRect(-s/2, -s, s, s);
+      ctx.strokeStyle = '#3e2c1c'; ctx.lineWidth = 1.2;
+      ctx.strokeRect(-s/2, -s, s, s);
+      ctx.beginPath();
+      ctx.moveTo(-s/2, -s); ctx.lineTo(s/2, 0);
+      ctx.moveTo(s/2, -s); ctx.lineTo(-s/2, 0);
+      ctx.stroke();
+      ctx.strokeStyle = '#5a3e28'; ctx.lineWidth = 0.8;
+      ctx.strokeRect(-s/2 + 2, -s + 2, s - 4, s - 4);
+      ctx.restore();
+      return { sx, sy };
+    };
+    // Anchored on the note's fixed world x (set at spawn) so the crates,
+    // the note's drawn position, and the F-key proximity check all agree.
+    const crateWorldX = h.noteWorldX;
+    drawCrate(crateWorldX + 10, 16);
+    const under = drawCrate(crateWorldX - 4, 14);
+    // Small top crate stacked directly on the one beside it, rather than
+    // independently ground-sampled, so it visually rests on it.
+    const top = drawCrate(crateWorldX - 4, 13, under.sy - 14);
+
+    // Note lying flat on top of the crate stack
+    {
+      const noteW = 15, noteH = 10;
+      ctx.save();
+      ctx.globalAlpha = h.alpha;
+      ctx.translate(top.sx, top.sy - 13 - 2); ctx.rotate(0.12);
+      ctx.fillStyle = '#e8ddb8';
+      ctx.fillRect(-noteW/2, -noteH/2, noteW, noteH);
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.6;
+      ctx.strokeRect(-noteW/2, -noteH/2, noteW, noteH);
+      // A small stone weighing it down so it doesn't blow away
+      ctx.fillStyle = '#6a6a6e';
+      ctx.beginPath(); ctx.arc(noteW/2 - 3, -noteH/2 + 3, 2, 0, Math.PI*2); ctx.fill();
+      // Scribbled "text" lines rather than real words at this scale
+      ctx.strokeStyle = 'rgba(40,30,20,0.55)'; ctx.lineWidth = 0.7;
+      for (let ln = 0; ln < 3; ln++) {
+        ctx.beginPath();
+        ctx.moveTo(-noteW/2 + 2, -noteH/2 + 2.5 + ln * 2.6);
+        ctx.lineTo(noteW/2 - 2 - (ln === 2 ? 5 : 0), -noteH/2 + 2.5 + ln * 2.6);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    return;
+  }
 
   if (isResearch) {
     // ══════════════════════════════════════════════════════════
@@ -9119,7 +9341,62 @@ function draw() {
   drawFreezeMeter();
   drawStaminaBar();
   drawChallenge();
+  drawNoteUI();
   drawOverlay();
+}
+
+function drawNoteUI() {
+  if (!player.inHouse && nearNote() && !noteOpen) {
+    const homeHouse = houses.find(h => h.giant);
+    const promptX = homeHouse.noteWorldX - cam.x, promptY = 460;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.60)';
+    rrect(promptX - 56, promptY - 15, 112, 19, 4); ctx.fill();
+    ctx.fillStyle = '#e8d8b0'; ctx.font = 'bold 10px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('[ F ]  READ NOTE', promptX, promptY);
+    ctx.restore();
+  }
+
+  if (noteOpen) {
+    const cx = W / 2, cy = H / 2;
+    const pw = 280;
+    const noteText = `hi my ${noteSiblingLabel} you have skipped the plane while the world freezes i hope you read this letter and i am waiting you at 5000 meters from our house good luck`;
+
+    ctx.save();
+    ctx.font = '13px Courier New';
+    const maxLineW = pw - 32;
+    const words = noteText.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (ctx.measureText(test).width > maxLineW && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+
+    const lineH = 18;
+    const ph = 60 + lines.length * lineH;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#e8ddb8';
+    rrect(cx - pw/2, cy - ph/2, pw, ph, 6); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2;
+    rrect(cx - pw/2, cy - ph/2, pw, ph, 6); ctx.stroke();
+
+    ctx.fillStyle = '#2c2318'; ctx.font = '13px Courier New'; ctx.textAlign = 'left';
+    lines.forEach((ln, i) => {
+      ctx.fillText(ln, cx - pw/2 + 16, cy - ph/2 + 28 + i * lineH);
+    });
+
+    ctx.fillStyle = 'rgba(44,35,24,0.6)'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('[ F ]  CLOSE', cx, cy + ph/2 - 14);
+    ctx.restore();
+  }
 }
 
 // ── Audio System ──────────────────────────────────────────
