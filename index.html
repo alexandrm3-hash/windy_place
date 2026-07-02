@@ -356,7 +356,7 @@ let staminaDepleted  = false;
 let staminaCooldown  = 0;    // frames remaining before regen starts
 let craters          = [];
 let craterParticles  = [];
-let tornadoSkipsLeft = 0;    // tornado encounters left to skip the escape minigame
+let tornadoSkipsLeft = 5;    // tornado encounters left to skip the escape minigame
 let tornadoWasNear   = false;
 
 // ── Platform generation ───────────────────────────────────
@@ -461,7 +461,7 @@ function init() {
   stamina          = 1;
   staminaDepleted  = false;
   staminaCooldown  = 0;
-  tornadoSkipsLeft = 0;
+  tornadoSkipsLeft = 5;
   tornadoWasNear   = false;
   craters          = [];
   craterParticles  = [];
