@@ -642,7 +642,10 @@ function updatePlayer() {
         // Walk animation counter
         const wStep = player.sprinting ? 8 : 9;
         if (Math.abs(player.vx) > 0.5 && player.onGround) {
-          if (++player.walkT >= wStep) { player.walkT = 0; player.walkF = (player.walkF + 1) % 6; }
+          if (++player.walkT >= wStep) {
+            player.walkT = 0; player.walkF = (player.walkF + 1) % 6;
+            if (player.walkF === 0 || player.walkF === 3) WindAudio.footstep(player.sprinting);
+          }
         } else if (player.onGround) { player.walkF = 0; }
 
         // X clamp — full room width on both floors
@@ -798,6 +801,7 @@ function updatePlayer() {
   if (Math.abs(player.vx) > 0.5 && player.onGround) {
     if (++player.walkT >= walkStep) {
       player.walkT = 0; player.walkF = (player.walkF + 1) % 6;
+      if (player.walkF === 0 || player.walkF === 3) WindAudio.footstep(sprinting);
     }
   } else if (player.onGround) { player.walkF = 0; }
 
@@ -827,7 +831,7 @@ function updatePlayer() {
 // ── House helpers ─────────────────────────────────────────
 // True when player is standing close enough to the door to press E
 function nearHouse(h) {
-  if (h.flying || h.alpha < 0.5) return false;
+  if (h.flying || h.alpha < 0.5 || h.giant) return false;
   const hCx = h.x + h.w / 2, pCx = player.x + player.w / 2;
   const hH = h.type === 'research' ? 240 : h.type === 'bunker' ? 180 : 120;
   const hBottom = h.y + hH, pBottom = player.y + player.h;
@@ -899,7 +903,7 @@ function updateHouses() {
       h.y  += h.vy;
       h.angle += h.vx * 0.015;
       if (h.y - cam.y < -80) h.alpha -= 0.025;
-    } else if (h.type !== 'research' && (isVoidStorm ||
+    } else if (!h.giant && h.type !== 'research' && (isVoidStorm ||
                (isHypercane && h.type === 'metal') ||
                (isStorm && h.type !== 'metal' && h.type !== 'bunker'))) {
       h.flyTimer--;
@@ -5965,6 +5969,15 @@ function drawHouse(h) {
   ctx.rotate(h.angle);
   ctx.globalAlpha = h.alpha;
 
+  // Giant landmark house — pure visual up-scale anchored at the foundation
+  // line so it grows taller/wider without floating or sinking into the ground.
+  if (h.giant) {
+    const gs = h.giantScale || 2.4;
+    ctx.translate(0, BH / 2);
+    ctx.scale(gs, gs);
+    ctx.translate(0, -BH / 2);
+  }
+
   const warm    = player.inHouse === h;
   const isMetal = h.type === 'metal';
 
@@ -9309,105 +9322,97 @@ const WindAudio = (() => {
     }
 
     if (!running) {
-      // ── Walking on snow: three layered components ───────────
+      // ── Walking on snow: soft "puff" — no ringing/tonal content,
+      //    just a warm low thump plus a broadband muffled poof of powder.
 
-      // 1. Soft body impact — low thud as weight transfers onto foot
-      const impLen = Math.floor(sr * 0.10);
+      // 1. Soft body impact — low, rounded thump as weight settles into powder
+      const impLen = Math.floor(sr * 0.12);
       const impBuf = ac.createBuffer(1, impLen, sr);
       const impD   = impBuf.getChannelData(0);
       for (let i = 0; i < impLen; i++) {
         const p  = i / impLen;
-        const env = Math.pow(1 - p, 2.2) * Math.min(1, p / 0.015);
-        // Pitched thud: sine drops from ~70 to 28 Hz
-        const freq = 70 - p * 42;
-        impD[i] = Math.sin(2 * Math.PI * freq * i / sr) * env * 0.7
-                + (Math.random() * 2 - 1) * env * 0.3;
+        const env = Math.pow(1 - p, 2.4) * Math.min(1, p / 0.05); // slow, soft attack
+        const freq = 62 - p * 30;
+        impD[i] = Math.sin(2 * Math.PI * freq * i / sr) * env * 0.85
+                + (Math.random() * 2 - 1) * env * 0.15;
       }
-      play(impBuf, [lpf(220)], 0.18 * rv(), t);
+      play(impBuf, [lpf(140)], 0.17 * rv(), t);
 
-      // 2. Snow compression crunch — mid-freq noise with resonant peak
-      //    Sounds like ice crystals fracturing under slow weight
-      const crLen = Math.floor(sr * 0.13);
-      const crBuf = ac.createBuffer(1, crLen, sr);
-      const crD   = crBuf.getChannelData(0);
-      for (let i = 0; i < crLen; i++) {
-        const p   = i / crLen;
-        const env = Math.pow(1 - p, 1.6) * Math.min(1, p / 0.02);
-        crD[i] = (Math.random() * 2 - 1) * env;
+      // 2. Powder puff — broadband noise, heavily low-passed with a slow
+      //    attack so it "poofs" outward instead of cracking like ice/concrete
+      const pfLen = Math.floor(sr * 0.16);
+      const pfBuf = noise(pfLen);
+      const pfD   = pfBuf.getChannelData(0);
+      for (let i = 0; i < pfLen; i++) {
+        const p   = i / pfLen;
+        const env = Math.pow(1 - p, 1.8) * Math.min(1, p / 0.10);
+        pfD[i]   *= env;
       }
-      const crBP = bpf(700 * rv(), 1.8);
-      play(crBuf, [hpf(260), crBP, lpf(2200)], 0.14, t + 0.005);
+      play(pfBuf, [lpf(650 * rv())], 0.15, t + 0.006);
 
-      // 3. Surface squeak — compressed snow singing under the boot
-      //    Short tonal burst that slides up slightly in pitch
-      const sqLen = Math.floor(sr * 0.07);
-      const sqBuf = ac.createBuffer(1, sqLen, sr);
-      const sqD   = sqBuf.getChannelData(0);
-      const sqBase = 380 + Math.random() * 120;
-      let sqPhase = 0;
-      for (let i = 0; i < sqLen; i++) {
-        const p   = i / sqLen;
-        const env = Math.pow(1 - p, 3.5) * Math.min(1, p / 0.04);
-        const freq = sqBase + p * 90;
-        sqPhase  += (2 * Math.PI * freq) / sr;
-        sqD[i]    = Math.sin(sqPhase) * env * 0.55
-                  + (Math.random() * 2 - 1) * env * 0.15;
+      // 3. Faint high-frequency dusting — barely-there sparkle of loose
+      //    snow settling, very soft and short so it doesn't read as tonal
+      const dsLen = Math.floor(sr * 0.05);
+      const dsBuf = noise(dsLen);
+      const dsD   = dsBuf.getChannelData(0);
+      for (let i = 0; i < dsLen; i++) {
+        const p   = i / dsLen;
+        const env = Math.pow(1 - p, 2.5) * Math.min(1, p / 0.06);
+        dsD[i]   *= env;
       }
-      const sqBP = bpf(sqBase, 4.5);
-      play(sqBuf, [sqBP], 0.045 * rv(), t + 0.008);
+      play(dsBuf, [hpf(1800), lpf(3200)], 0.025 * rv(), t + 0.015);
 
     } else {
-      // ── Sprinting on snow: four layered components ──────────
+      // ── Sprinting on snow: bigger, breathier puff — still soft, just louder
+      //    and with more low-end punch instead of any hard/sharp crack.
 
-      // 1. Hard boot thud — sharp pitch-drop sine, heavy impact
-      const thLen = Math.floor(sr * 0.16);
+      // 1. Heavier boot thump — rounded low impact, no hard transient
+      const thLen = Math.floor(sr * 0.18);
       const thBuf = ac.createBuffer(1, thLen, sr);
       const thD   = thBuf.getChannelData(0);
       let thPhase = 0;
       for (let i = 0; i < thLen; i++) {
         const p   = i / thLen;
-        const env = Math.pow(1 - p, 1.1) * Math.min(1, p / 0.008);
-        const freq = 130 - p * 100; // 130→30 Hz hard drop
+        const env = Math.pow(1 - p, 1.8) * Math.min(1, p / 0.04);
+        const freq = 100 - p * 65;
         thPhase  += (2 * Math.PI * Math.max(20, freq)) / sr;
-        thD[i]    = Math.sin(thPhase) * env * 0.75
-                  + (Math.random() * 2 - 1) * env * 0.25;
+        thD[i]    = Math.sin(thPhase) * env * 0.85
+                  + (Math.random() * 2 - 1) * env * 0.15;
       }
-      play(thBuf, [lpf(300)], 0.48 * rv(), t);
+      play(thBuf, [lpf(220)], 0.42 * rv(), t);
 
-      // 2. Aggressive ice-crystal crunch — fast transient burst
-      //    Snow shattering under fast heavy impact
-      const icLen = Math.floor(sr * 0.055);
-      const icBuf = noise(icLen);
-      const icD   = icBuf.getChannelData(0);
-      for (let i = 0; i < icLen; i++) {
-        const p   = i / icLen;
-        const env = Math.pow(1 - p, 4.0) * Math.min(1, p / 0.01);
-        icD[i]   *= env;
+      // 2. Big powder puff — the main body of the sound, broad and muffled
+      const pfLen = Math.floor(sr * 0.14);
+      const pfBuf = noise(pfLen);
+      const pfD   = pfBuf.getChannelData(0);
+      for (let i = 0; i < pfLen; i++) {
+        const p   = i / pfLen;
+        const env = Math.pow(1 - p, 1.5) * Math.min(1, p / 0.06);
+        pfD[i]   *= env;
       }
-      play(icBuf, [hpf(1200), bpf(2400 * rv(), 0.9), lpf(7000)], 0.30, t + 0.002);
+      play(pfBuf, [lpf(900 * rv())], 0.30, t + 0.004);
 
-      // 3. Mid crunch body — the main snow texture, between thud and crunch
-      const mcLen = Math.floor(sr * 0.09);
+      // 3. Soft mid puff body — fills between thump and puff, still no ring
+      const mcLen = Math.floor(sr * 0.10);
       const mcBuf = noise(mcLen);
       const mcD   = mcBuf.getChannelData(0);
       for (let i = 0; i < mcLen; i++) {
         const p   = i / mcLen;
-        const env = Math.pow(1 - p, 2.0) * Math.min(1, p / 0.012);
+        const env = Math.pow(1 - p, 2.0) * Math.min(1, p / 0.03);
         mcD[i]   *= env;
       }
-      play(mcBuf, [bpf(650 * rv(), 1.4), lpf(2800)], 0.22, t + 0.004);
+      play(mcBuf, [lpf(1400)], 0.18, t + 0.008);
 
-      // 4. Ejected snow scatter — tiny high flutter as snow sprays out
-      //    Delayed slightly, sounds like chunks scattering away from boot
-      const scLen = Math.floor(sr * 0.11);
+      // 4. Loose snow scatter — soft flutter as powder kicks up, muffled
+      const scLen = Math.floor(sr * 0.12);
       const scBuf = noise(scLen);
       const scD   = scBuf.getChannelData(0);
       for (let i = 0; i < scLen; i++) {
         const p   = i / scLen;
-        const env = Math.pow(1 - p, 1.3) * Math.min(1, p / 0.03) * (p < 0.25 ? 0 : 1);
+        const env = Math.pow(1 - p, 1.4) * Math.min(1, p / 0.06) * (p < 0.2 ? 0 : 1);
         scD[i]   *= env;
       }
-      play(scBuf, [hpf(2800), lpf(9000)], 0.10 * rv(), t + 0.018);
+      play(scBuf, [hpf(1200), lpf(3800)], 0.09 * rv(), t + 0.022);
     }
   }
 
