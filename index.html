@@ -608,7 +608,7 @@ function updatePlayer() {
 
         // Jump
         if (!chalActive && doJump() && player.onGround) {
-          player.vy = -10.5; player.onGround = false;
+          player.vy = -10.5; player.onGround = false; WindAudio.jump();
         }
 
         // Ladder climb — F key when near ladder
@@ -675,7 +675,7 @@ function updatePlayer() {
   if (!chalActive) player.vx += cappedForce * (player.onGround ? 0.75 : 1.5);
   player.vx  = Math.max(-5.5 * smCap, Math.min(5.5 * smCap, player.vx));
 
-  if (!chalActive && doJump() && player.onGround) { player.vy = -12.5; player.onGround = false; }
+  if (!chalActive && doJump() && player.onGround) { player.vy = -12.5; player.onGround = false; WindAudio.jump(); }
 
   if (chalActive) { player.vx = 0; player.vy = 0; }
   player.vy = Math.min(player.vy + (chalActive ? 0 : 0.50), 14);
@@ -9092,6 +9092,21 @@ const WindAudio = (() => {
     })();
   }
 
+  function jump() {
+    if (!ac) return;
+    const t = ac.currentTime;
+    // Classic platformer jump blip: square wave with a quick upward pitch slide.
+    const o = ac.createOscillator(); o.type = 'square';
+    o.frequency.setValueAtTime(340, t);
+    o.frequency.exponentialRampToValueAtTime(880, t + 0.11);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.28, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.20);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 0.22);
+  }
+
   function footstep(running) {
     if (!ac) return;
     const t  = ac.currentTime;
@@ -9280,7 +9295,7 @@ const WindAudio = (() => {
     master.gain.setTargetAtTime(muted ? 0 : 0.85, ac.currentTime, 0.05);
   }
 
-  return { init, update, footstep, setMute };
+  return { init, update, footstep, jump, setMute };
 })();
 
 // ── Wind Challenge minigame ───────────────────────────────
