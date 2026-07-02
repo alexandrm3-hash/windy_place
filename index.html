@@ -493,7 +493,12 @@ function extendMap() {
         }
       }
       const sGroundY = baseGroundY(sxWorld + shopW / 2);
-      shops.push({ x: sxWorld, y: sGroundY - 84, w: shopW });
+      shops.push({
+        x: sxWorld, y: sGroundY - 26, w: shopW,
+        keeperColor: PLAYER_BODY_COLORS[Math.floor(Math.random() * PLAYER_BODY_COLORS.length)],
+        keeperScarf: Math.random() < 0.75 ? SCARF_COLORS[Math.floor(Math.random() * SCARF_COLORS.length)] : null,
+        keeperHat: Math.random() < 0.5,
+      });
       // Keep coins from landing inside the shop's footprint either
       for (const c of coins) {
         if (!c.collected && c.x > sxWorld - 30 && c.x < sxWorld + shopW + 30) {
@@ -9711,7 +9716,9 @@ function draw() {
   drawDecorations();
   drawCoins();
   houses.forEach(drawHouse);
-  shops.forEach(drawShop);
+  shops.forEach(drawShopBack);
+  shops.forEach(drawShopkeeper);
+  shops.forEach(drawShopFront);
   drawLightning();
   drawTornado();
   drawStickman();
@@ -9786,19 +9793,27 @@ function drawNoteUI() {
   }
 }
 
-function drawShop(s) {
+// Shared setup so the back and front halves (drawn on either side of the
+// keeper, so he layers correctly behind the counter) use the identical
+// transform — scaled up around the counter's base (y=26, the ground line)
+// so it grows without floating or sinking relative to the terrain.
+function shopTransform(s) {
   const cx = s.x - cam.x + s.w / 2, cy = s.y - cam.y;
-  if (cx < -150 || cx > W + 150) return;
-  const hw = s.w / 2;
-
-  ctx.save();
   ctx.translate(cx, cy);
-  // Scale up around the counter's base (y=26, the ground line) so it grows
-  // without floating or sinking relative to the terrain.
   const shopScale = 1.6;
   ctx.translate(0, 26);
   ctx.scale(shopScale, shopScale);
   ctx.translate(0, -26);
+  return { cx, cy, hw: s.w / 2 };
+}
+
+// Back half: everything except the counter — drawn first so the keeper
+// (drawn right after this) appears to stand in the stall behind it.
+function drawShopBack(s) {
+  const cx = s.x - cam.x + s.w / 2, cy = s.y - cam.y;
+  if (cx < -150 || cx > W + 150) return;
+  ctx.save();
+  const { hw } = shopTransform(s);
 
   // Warm lantern glow
   const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, hw * 3);
@@ -9806,20 +9821,6 @@ function drawShop(s) {
   grd.addColorStop(1, 'rgba(255,190,80,0)');
   ctx.fillStyle = grd;
   ctx.fillRect(-hw * 3, -70, hw * 6, 140);
-
-  // Counter/stall base
-  ctx.fillStyle = '#5a3c24';
-  ctx.fillRect(-hw, 0, s.w, 26);
-  ctx.strokeStyle = '#3a2414'; ctx.lineWidth = 1;
-  ctx.strokeRect(-hw, 0, s.w, 26);
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.fillRect(-hw, 20, s.w, 6);
-
-  // Goods on the counter — a few crates/jars
-  ctx.fillStyle = '#6a4a30'; ctx.fillRect(-hw + 6, -8, 12, 10);
-  ctx.strokeStyle = '#3e2c1c'; ctx.lineWidth = 0.8; ctx.strokeRect(-hw + 6, -8, 12, 10);
-  ctx.fillStyle = '#c99a2e'; ctx.beginPath(); ctx.arc(hw - 12, -4, 5, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = '#7a5410'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(hw - 12, -4, 5, 0, Math.PI*2); ctx.stroke();
 
   // Support poles
   ctx.strokeStyle = '#3a2818'; ctx.lineWidth = 4;
@@ -9844,6 +9845,110 @@ function drawShop(s) {
   ctx.strokeStyle = '#241a10'; ctx.lineWidth = 1; ctx.strokeRect(-18, -34, 36, 14);
   ctx.fillStyle = '#ffe066'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center';
   ctx.fillText('SHOP', 0, -24);
+
+  ctx.restore();
+}
+
+// Front half: the counter itself, drawn AFTER the keeper so it occludes
+// his legs/lower body exactly like standing behind a real counter.
+function drawShopFront(s) {
+  const cx = s.x - cam.x + s.w / 2, cy = s.y - cam.y;
+  if (cx < -150 || cx > W + 150) return;
+  ctx.save();
+  const { hw } = shopTransform(s);
+
+  ctx.fillStyle = '#5a3c24';
+  ctx.fillRect(-hw, 0, s.w, 26);
+  ctx.strokeStyle = '#3a2414'; ctx.lineWidth = 1;
+  ctx.strokeRect(-hw, 0, s.w, 26);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(-hw, 20, s.w, 6);
+
+  // Goods on the counter — a few crates/jars
+  ctx.fillStyle = '#6a4a30'; ctx.fillRect(-hw + 6, -8, 12, 10);
+  ctx.strokeStyle = '#3e2c1c'; ctx.lineWidth = 0.8; ctx.strokeRect(-hw + 6, -8, 12, 10);
+  ctx.fillStyle = '#c99a2e'; ctx.beginPath(); ctx.arc(hw - 12, -4, 5, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#7a5410'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(hw - 12, -4, 5, 0, Math.PI*2); ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawShopkeeper(s) {
+  // Drawn independently of the shop's own scale-up so the keeper stays a
+  // normal stickman size — but feet anchored to the counter's own ground
+  // reference (not live terrain) so he lines up pixel-perfect with it and
+  // layers correctly behind the counter front (drawn after him).
+  const worldCx = s.x + s.w / 2 - 4;
+  const sx = worldCx - cam.x, feetY = (s.y - cam.y) + 26;
+  if (sx < -60 || sx > W + 60) return;
+
+  const pCx = player.x + player.w / 2, pCy = player.y + player.h / 2;
+  const dist = Math.hypot(pCx - worldCx, pCy - (s.y + 26));
+  const waving = dist < 110;
+
+  // Lifted above the raw feet anchor so the counter (drawn after, see
+  // drawShopFront) occludes only the waist/legs instead of his whole body.
+  const liftY = 22;
+  const HY = feetY - liftY, NY = HY - 37, SY = HY - 30;
+  const idleSway = Math.sin(frame * 0.03 + s.x * 0.01) * 1.2;
+
+  ctx.save();
+  ctx.translate(sx, 0);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const kc = s.keeperColor || '#e8c840';
+  ctx.strokeStyle = kc; ctx.fillStyle = kc;
+
+  // Legs
+  ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.moveTo(-2, HY); ctx.lineTo(-4, HY - 17); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(2, HY); ctx.lineTo(4, HY - 17); ctx.stroke();
+
+  // Torso
+  ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.moveTo(0, SY); ctx.lineTo(0, HY - 16); ctx.stroke();
+
+  // Non-waving arm — relaxed at the side
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, SY); ctx.lineTo(-6 + idleSway * 0.3, SY + 12); ctx.stroke();
+
+  // Waving arm — raised and oscillating when the player is close, otherwise
+  // resting with a gentle idle sway
+  const waveAngle = waving ? Math.sin(frame * 0.35) * 0.5 - 0.3 : 0.15 + idleSway * 0.02;
+  const elbX = 5, elbY = SY - (waving ? 8 : 2);
+  const handX = elbX + Math.sin(waveAngle) * 8, handY = elbY - Math.cos(waveAngle) * 8;
+  ctx.beginPath(); ctx.moveTo(0, SY); ctx.lineTo(elbX, elbY); ctx.lineTo(handX, handY); ctx.stroke();
+
+  // Head (torus ring, matching every other stickman in the game)
+  const HCY = NY - 8;
+  ctx.beginPath();
+  ctx.arc(0, HCY, 5, 0, Math.PI * 2, false);
+  ctx.arc(0, HCY, 3, 0, Math.PI * 2, true);
+  ctx.fill('evenodd');
+  ctx.lineWidth = 1.1;
+  ctx.beginPath(); ctx.arc(0, HCY, 5, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, HCY, 3, 0, Math.PI * 2); ctx.stroke();
+
+  // Hat — small beanie, only on keepers who rolled one
+  if (s.keeperHat) {
+    ctx.fillStyle = '#3355aa';
+    ctx.beginPath(); ctx.arc(0, HCY - 1, 5, Math.PI, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2244aa'; ctx.fillRect(-5, HCY - 3, 10, 2.2);
+  }
+
+  // Scarf — same wrap-and-tail style as researchers/the player
+  if (s.keeperScarf) {
+    const neckMidX = 0, neckMidY = NY + 2;
+    ctx.fillStyle = s.keeperScarf;
+    ctx.beginPath();
+    ctx.ellipse(neckMidX, neckMidY, 4, 2.3, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(neckMidX - 2, neckMidY + 1);
+    ctx.lineTo(neckMidX - 4, neckMidY + 7);
+    ctx.lineTo(neckMidX - 1, neckMidY + 8);
+    ctx.lineTo(neckMidX + 1, neckMidY + 3);
+    ctx.closePath(); ctx.fill();
+  }
 
   ctx.restore();
 }
@@ -10504,7 +10609,12 @@ function spawnShopNearby() {
   if (gState !== 'playing') init();
   const sx = player.x + player.w / 2 + 200;
   const shopW = 70;
-  shops.push({ x: sx, y: baseGroundY(sx + shopW / 2) - 84, w: shopW });
+  shops.push({
+    x: sx, y: baseGroundY(sx + shopW / 2) - 26, w: shopW,
+    keeperColor: PLAYER_BODY_COLORS[Math.floor(Math.random() * PLAYER_BODY_COLORS.length)],
+    keeperScarf: Math.random() < 0.75 ? SCARF_COLORS[Math.floor(Math.random() * SCARF_COLORS.length)] : null,
+    keeperHat: Math.random() < 0.5,
+  });
 }
 document.addEventListener('click', e => {
   if (!e.target.closest('#test-btn') && !e.target.closest('#test-menu'))
