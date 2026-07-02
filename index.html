@@ -1053,7 +1053,7 @@ function nearShop() {
   if (player.inHouse) return null;
   const pCx = player.x + player.w / 2;
   for (const s of shops) {
-    if (Math.abs(pCx - (s.x + s.w / 2)) < 55) return s;
+    if (Math.abs(pCx - (s.x + s.w / 2)) < 80) return s;
   }
   return null;
 }
@@ -9910,7 +9910,7 @@ function drawShopUI() {
   if (!shopOpen) {
     const s = nearShop();
     if (s) {
-      const promptX = s.x + s.w / 2 - cam.x, promptY = s.y - cam.y - 60;
+      const promptX = s.x + s.w / 2 - cam.x, promptY = s.y - cam.y - 90;
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.60)';
       rrect(promptX - 42, promptY - 15, 84, 19, 4); ctx.fill();
