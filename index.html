@@ -725,14 +725,24 @@ function updatePlayer() {
       }
     }
 
-    const currBot = player.y + player.h;
-    const prevBot = currBot - player.vy;
-    // When already grounded use a big step-down tolerance so slopes are followed smoothly
-    const snapTol = wasOnGround ? 48 : (Math.abs(player.vx) > 1 ? 18 : 5);
-    if (currBot >= surfaceY && prevBot <= surfaceY + snapTol && player.vy >= 0) {
-      player.y    = surfaceY - player.h;
-      player.vy   = 0;
+    if (wasOnGround && player.vy >= 0) {
+      // Already walking on the ground — always hug the terrain surface exactly,
+      // no distance tolerance. A fixed step-down tolerance used to fall behind
+      // on the deep/steep crater slopes (surfaceY can move more per frame than
+      // the tolerance allowed), so the player alternated between "caught up"
+      // and "not caught up" every frame — a visible twitch going downhill.
+      player.y = surfaceY - player.h;
+      player.vy = 0;
       player.onGround = true;
+    } else {
+      const currBot = player.y + player.h;
+      const prevBot = currBot - player.vy;
+      const snapTol = Math.abs(player.vx) > 1 ? 18 : 5;
+      if (currBot >= surfaceY && prevBot <= surfaceY + snapTol && player.vy >= 0) {
+        player.y    = surfaceY - player.h;
+        player.vy   = 0;
+        player.onGround = true;
+      }
     }
 
     // Ledge platforms (h <= 20) — keep discrete collision for special surfaces
@@ -9540,7 +9550,10 @@ function updateChallenge() {
 function drawChallenge() {
   if (!challenge) return;
   const wi = windInfo();
-  if (wi.lvl < 3) return;
+  // The tornado-escape challenge must always be visible while active — the
+  // tornado entity can still be alive (and the challenge still running)
+  // even after the ambient wind state has drifted back below level 3.
+  if (wi.lvl < 3 && !challenge.isTornadoEscape) return;
 
   const cx = W / 2, cy = H - 90;
   const isWin  = challenge.result === 'win';
