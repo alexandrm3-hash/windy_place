@@ -355,6 +355,8 @@ let staminaDepleted  = false;
 let staminaCooldown  = 0;    // frames remaining before regen starts
 let craters          = [];
 let craterParticles  = [];
+let tornadoSkipsLeft = 0;    // tornado encounters left to skip the escape minigame
+let tornadoWasNear   = false;
 
 // ── Platform generation ───────────────────────────────────
 function initPlatforms() {
@@ -458,6 +460,8 @@ function init() {
   stamina          = 1;
   staminaDepleted  = false;
   staminaCooldown  = 0;
+  tornadoSkipsLeft = 0;
+  tornadoWasNear   = false;
   craters          = [];
   craterParticles  = [];
   // 8 workers, each with an independent running x and direction
@@ -1009,8 +1013,15 @@ function updateTornado() {
         gState = 'dead';
       }
     } else if (dist < dangerRadius && !challenge) {
-      // Proximity — spawn escape challenge
-      spawnTornadoChallenge();
+      // Proximity — spawn escape challenge, unless still on cooldown from a
+      // recent one (consumes one "encounter" per approach, not per frame).
+      if (!tornadoWasNear) {
+        if (tornadoSkipsLeft > 0) tornadoSkipsLeft--;
+        else spawnTornadoChallenge();
+      }
+      tornadoWasNear = true;
+    } else if (dist >= dangerRadius) {
+      tornadoWasNear = false;
     }
 
     // Win: blast player away from tornado
@@ -8789,6 +8800,19 @@ function drawHUD() {
   ctx.textAlign = 'center'; ctx.fillText(wi.label, mx, 29);
   ctx.restore();
 
+  // Escape-minigame cooldown badge — sits just under the wind pill,
+  // counting down the tornado encounters left before it's usable again.
+  if (tornadoSkipsLeft > 0) {
+    ctx.save();
+    const cbW = 150, cbH = 20, cbX = mx - cbW/2, cbY = 54;
+    ctx.fillStyle = 'rgba(0,0,0,0.48)'; rrect(cbX, cbY, cbW, cbH, 5); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,120,80,0.35)'; ctx.lineWidth = 1; rrect(cbX, cbY, cbW, cbH, 5); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff9060'; ctx.font = 'bold 9px Courier New';
+    ctx.fillText('ESCAPE MINIGAME CD: ' + tornadoSkipsLeft + '/5', mx, cbY + 13);
+    ctx.restore();
+  }
+
   // Score + tier (top left) — shows current position; maxReach tracks best
   const score = Math.floor(player.x / 12);
   const tier  = getWindTier();
@@ -9453,11 +9477,24 @@ function spawnChallenge() {
 
 function spawnTornadoChallenge() {
   if (player.inHouse && (player.inHouse.type === 'bunker' || player.inHouse.type === 'research')) return;
-  // Harder than normal: 4–5 keys, tight timer
-  const count = 3 + Math.floor(Math.random() * 2);
+  // Harder than normal, and scales with how strong the tornado/storm tier
+  // currently is — more keys to hit, same fixed timer (300) no matter what,
+  // so the extra difficulty is purely about sequence length, not less time.
+  const tier = getWindTier();          // 0 (calm) .. 7 (void storm)
+  // Stronger tornado tier → more random key presses required, capped so it
+  // never becomes literally impossible to finish inside the fixed timer.
+  const count = Math.min(12, 3 + tier + Math.floor(Math.random() * 2));
   const seq = [];
-  for (let i = 0; i < count; i++)
-    seq.push(CHAL_POOL[Math.floor(Math.random() * CHAL_POOL.length)]);
+  let prev = null;
+  for (let i = 0; i < count; i++) {
+    // Avoid immediate key repeats at higher tiers so the sequence can't be
+    // button-mashed through — forces genuinely reading each prompt.
+    let key;
+    do { key = CHAL_POOL[Math.floor(Math.random() * CHAL_POOL.length)]; }
+    while (tier >= 4 && key === prev && CHAL_POOL.length > 1);
+    seq.push(key);
+    prev = key;
+  }
   challenge = { seq, idx: 0, timer: 300, maxTimer: 300, result: null, cooldown: 60, isTornadoEscape: true };
 }
 
@@ -9487,7 +9524,10 @@ function updateChallenge() {
     return;
   }
   if (challenge.result !== null) {
-    if (--challenge.cooldown <= 0) challenge = null;
+    if (--challenge.cooldown <= 0) {
+      if (challenge.isTornadoEscape) tornadoSkipsLeft = 5;
+      challenge = null;
+    }
     return;
   }
   if (--challenge.timer <= 0) {
